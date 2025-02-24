@@ -1,8 +1,9 @@
+use anyhow::Result;
 use near_workspaces::{operations::Function, Account, Contract, DevNetwork, Worker};
 use serde_json::json;
-use anyhow::Result;
 
-const WASM_FILEPATH: &[u8] = include_bytes!("../target/wasm32-unknown-unknown/release/proxy_contract.wasm");
+const WASM_FILEPATH: &[u8] =
+    include_bytes!("../target/wasm32-unknown-unknown/release/proxy_contract.wasm");
 
 async fn init(worker: &Worker<impl DevNetwork>) -> Result<(Contract, Account)> {
     let proxy_contract = worker.dev_deploy(WASM_FILEPATH).await?;
@@ -52,7 +53,6 @@ async fn test_proxy_contract_initialization() -> Result<()> {
 
     Ok(())
 }
-
 
 #[tokio::test]
 async fn test_add_authorized_user() -> Result<()> {
@@ -157,7 +157,8 @@ async fn test_request_signature_unauthorized() -> Result<()> {
     let err_msg = format!("{:?}", final_result.failures());
     assert!(
         err_msg.contains("Unauthorized: only authorized users can request signatures"),
-        "Expected 'Unauthorized:...' error, got: {}", err_msg
+        "Expected 'Unauthorized:...' error, got: {}",
+        err_msg
     );
     Ok(())
 }
@@ -185,7 +186,10 @@ async fn test_set_signer_contract() -> Result<()> {
         .await?
         .json::<String>()?;
 
-    assert_eq!(current_signer, new_signer, "Signer contract should be updated");
+    assert_eq!(
+        current_signer, new_signer,
+        "Signer contract should be updated"
+    );
     Ok(())
 }
 
@@ -216,4 +220,3 @@ async fn test_get_authorized_users() -> Result<()> {
     assert!(authorized_users.contains(&user2.id().to_string()));
     Ok(())
 }
-
