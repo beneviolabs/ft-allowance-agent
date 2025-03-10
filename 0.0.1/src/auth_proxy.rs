@@ -7,6 +7,7 @@ use near_sdk::{
     PublicKey,
 };
 use near_sdk::base64;
+use near_sdk::base64::Engine;
 use omni_transaction::transaction_builder::TransactionBuilder;
 use omni_transaction::transaction_builder::TxBuilder;
 use omni_transaction::{
@@ -225,22 +226,24 @@ impl ProxyContract {
         // Big R value from the MPC signature
         let affine_point = response.big_r.affine_point;
         let scalar = response.s.scalar;
+        let recovery_id = response.recovery_id;
         near_sdk::env::log_str(&format!("R value: {}", affine_point));
         near_sdk::env::log_str(&format!("S value: {}", scalar));
+        near_sdk::env::log_str(&format!("Recovery ID value: {}", recovery_id));
 
         //TODO - fix the serialization of the signature https://github.com/keypom/keypom-js/blob/a422762d00f843fefd4e5f46bba180ae69c376ea/packages/trial-accounts/src/lib/broadcastTransaction.ts#L102
         //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/transactions/src/sign.ts#L39
         //https://github.com/near/near-api-js/blob/master/packages/transactions/src/signature.ts#L21
         //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/providers/src/json-rpc-provider.ts#L112C32-L112C49
         // Reconstruct signature
-        match self.reconstruct_signature(&affine_point, &scalar) {
+        match self.reconstruct_signature(&affine_point, &scalar, &recovery_id) {
             Ok(reconstructed) => {
                 // As hex string
                 //TODO - start here. get help converting the signature into borsh prior as needed to be broadcast
                 near_sdk::env::log_str(&format!("Reconstructed signature (hex): {}", hex::encode(&reconstructed)));
 
                 // As base64
-                near_sdk::env::log_str(&format!("Reconstructed signature (base64): {}", base64::encode(&reconstructed)));
+                near_sdk::env::log_str(&format!("Reconstructed signature (base64): {}", base64::engine::general_purpose::STANDARD.encode(&reconstructed)));
 
                 // Split into r and s components (first 32 bytes and last 32 bytes)
                 near_sdk::env::log_str(&format!(
@@ -326,11 +329,12 @@ impl ProxyContract {
         );
     }
 
-    fn reconstruct_signature(&self, big_r: &str, big_s: &str) -> Result<Vec<u8>, String> {
+    fn reconstruct_signature(&self, big_r: &str, big_s: &str, recovery: &u8) -> Result<Vec<u8>, String> {
 
         // Extract first 2 chars from r (recovery id) and rest of r
         // add 27 as per signet https://github.com/sig-net/signet.js/blob/main/src/utils/cryptography.ts#L27
-        let recovery_id = u8::from_str_radix(&big_r[0..2], 16).unwrap() + 27;
+        let recovery_id = recovery + 27;
+        near_sdk::env::log_str(&format!("Recovery ID modified value: {}", recovery_id));
         let r_value = &big_r[2..];
 
         // Convert components to byte vectors
@@ -346,7 +350,7 @@ impl ProxyContract {
 
         // Log component sizes for debugging
         near_sdk::env::log_str(&format!(
-            "Signature components - R: {}, S: {}, Recovery: {}",
+            "Signature component lengths - R: {}, S: {}, Recovery: {}",
             r_bytes.len(),
             s_bytes.len(),
             recovery_bytes.len()
