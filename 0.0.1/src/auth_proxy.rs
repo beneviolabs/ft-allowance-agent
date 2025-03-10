@@ -228,10 +228,15 @@ impl ProxyContract {
         near_sdk::env::log_str(&format!("R value: {}", affine_point));
         near_sdk::env::log_str(&format!("S value: {}", scalar));
 
+        //TODO - fix the serialization of the signature https://github.com/keypom/keypom-js/blob/a422762d00f843fefd4e5f46bba180ae69c376ea/packages/trial-accounts/src/lib/broadcastTransaction.ts#L102
+        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/transactions/src/sign.ts#L39
+        //https://github.com/near/near-api-js/blob/master/packages/transactions/src/signature.ts#L21
+        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/providers/src/json-rpc-provider.ts#L112C32-L112C49
         // Reconstruct signature
         match self.reconstruct_signature(&affine_point, &scalar) {
             Ok(reconstructed) => {
                 // As hex string
+                //TODO - start here. get help converting the signature into borsh prior as needed to be broadcast
                 near_sdk::env::log_str(&format!("Reconstructed signature (hex): {}", hex::encode(&reconstructed)));
 
                 // As base64
@@ -322,28 +327,37 @@ impl ProxyContract {
     }
 
     fn reconstruct_signature(&self, big_r: &str, big_s: &str) -> Result<Vec<u8>, String> {
-        // Remove the 2-char prefix
-        let r = &big_r[2..];
 
-        // Pad r and s with leading zeros to 64 characters
-        let padded_r = format!("{:0>64}", r);
-        let padded_s = format!("{:0>64}", big_s);
+        // Extract first 2 chars from r (recovery id) and rest of r
+        // add 27 as per signet https://github.com/sig-net/signet.js/blob/main/src/utils/cryptography.ts#L27
+        let recovery_id = u8::from_str_radix(&big_r[0..2], 16).unwrap() + 27;
+        let r_value = &big_r[2..];
 
-        // Combine r and s and convert to bytes
-        let combined = padded_r.clone() + &padded_s;
+        // Convert components to byte vectors
+        let r_bytes = hex::decode(r_value).map_err(|_| "Failed to decode r value hex")?;
+        let s_bytes = hex::decode(big_s).map_err(|_| "Failed to decode s value hex")?;
+        let recovery_bytes = vec![recovery_id];
+
+        // Concatenate in order: r_bytes + s_bytes + recovery_bytes
+        let mut signature = Vec::with_capacity(r_bytes.len() + s_bytes.len() + recovery_bytes.len());
+        signature.extend_from_slice(&r_bytes);
+        signature.extend_from_slice(&s_bytes);
+        signature.extend_from_slice(&recovery_bytes);
+
+        // Log component sizes for debugging
         near_sdk::env::log_str(&format!(
-            "Padded lengths - R: {}, S: {}",
-            padded_r.clone().len(),
-            padded_s.len()
+            "Signature components - R: {}, S: {}, Recovery: {}",
+            r_bytes.len(),
+            s_bytes.len(),
+            recovery_bytes.len()
         ));
-        let raw_signature = hex::decode(&combined).map_err(|_| "Failed to decode hex string")?;
 
-        // Verify signature length
-        if raw_signature.len() != 64 {
-            return Err(format!("Invalid signature length {}", raw_signature.len()));
+        // Verify Secp256k1Signature length
+        if signature.len() != 65 {
+            return Err(format!("Invalid signature length {}", signature.len()));
         }
 
-        Ok(raw_signature)
+        Ok(signature)
     }
 }
 
