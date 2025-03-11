@@ -8,7 +8,7 @@ if [ -z "$1" ]; then
 fi
 
 # Convert signed transaction to base64
-SIGNED_TX_BASE64=$(echo -n "$1" | base64)
+SIGNED_TX_BASE64="$1"
 
 # Submit transaction to NEAR RPC
 curl -X POST https://rpc.testnet.fastnear.com \
