@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use near_gas::NearGas;
 use near_sdk::collections::UnorderedSet;
 use near_sdk::ext_contract;
@@ -7,13 +9,15 @@ use near_sdk::{
     PublicKey,
 };
 use near_sdk::base64;
-use near_sdk::base64::Engine;
+use hex::FromHex;
+use omni_transaction::near::types::Secp256K1PublicKey;
 use omni_transaction::transaction_builder::TransactionBuilder;
 use omni_transaction::transaction_builder::TxBuilder;
+use omni_transaction::near::near_transaction::NearTransaction;
 use omni_transaction::{
     near::types::{
-        Action as OmniAction, BlockHash as OmniBlockHash, ED25519PublicKey as OmniEd25519PublicKey,
-        FunctionCallAction as OmniFunctionCallAction, PublicKey as OmniPublicKey, U128 as OmniU128,
+        Action as OmniAction, BlockHash as OmniBlockHash,
+        FunctionCallAction as OmniFunctionCallAction, PublicKey as OmniPublicKey, U128 as OmniU128, Secp256K1Signature, Signature,
         U64 as OmniU64,
     },
     NEAR,
@@ -26,13 +30,6 @@ pub trait ExtSelf {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct SignatureResponse {
-    pub big_r: BigR,
-    pub s: ScalarValue,
-    pub recovery_id: u8,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
 pub struct BigR {
     pub affine_point: String,
 }
@@ -40,6 +37,13 @@ pub struct BigR {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScalarValue {
     pub scalar: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SignatureResponse {
+    pub big_r: BigR,
+    pub s: ScalarValue,
+    pub recovery_id: u8,
 }
 
 const GAS_FOR_REQUEST_SIGNATURE: NearGas = NearGas::from_tgas(10);
@@ -153,16 +157,23 @@ impl ProxyContract {
             deposit: OmniU128(deposit.as_yoctonear()),
         }))];
 
+        near_sdk::env::log_str(&format!("nonce value: {}", nonce.0));
+
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(self.owner_id.to_string())
-            .signer_public_key(ProxyContract::convert_pk_to_omni(&env::signer_account_pk())) //TODO perhaps this should be this contract's public key?
+            .signer_public_key(Self::convert_pk_to_omni(&PublicKey::from_str("secp256k1:4VpBxc5ykqNNZ92zFeFp2NL18TUG9miZXZuC3JC8tzo9i2kxPPPkR3gCWCE5Q5pxH2xMJXufpFZR2PHi7rZpvaFn").unwrap())) //TODO programmatically get the public key per accountId & derivation path
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
             .actions(actions.clone())
-            .build()
-            .build_for_signing();
+            .build();
+
+        // Serialize transaction into a string to pass into callback
+        let tx_json_string = serde_json::to_string(&tx)
+            .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e)).replace("1000000000000000000000000", "\"1000000000000000000000000\""); // TODO Temp fix
+
+        near_sdk::env::log_str(&format!("near tx in json: {}", tx_json_string));
 
         near_sdk::env::log_str(&format!(
             "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
@@ -173,8 +184,14 @@ impl ProxyContract {
             block_hash
         ));
 
+        // helpful referencesq
+        // https://github.com/PiVortex/subscription-example/blob/main/contract/src/charge_subscription.rs#L129
+        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/transactions/src/sign.ts#L39
+        //https://github.com/near/near-api-js/blob/master/packages/transactions/src/signature.ts#L21
+        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/providers/src/json-rpc-provider.ts#L112C32-L112C49
+
         // SHA-256 hash of the serialized transaction
-        let hashed_payload = ProxyContract::hash_payload(&tx);
+        let hashed_payload = ProxyContract::hash_payload(&tx.build_for_signing());
 
         // Log arguments used for signature request
         near_sdk::env::log_str(&format!(
@@ -203,15 +220,16 @@ impl ProxyContract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_REQUEST_SIGNATURE)
-                    .callback_method(),
+                    .sign_request_callback(tx_json_string),
             )
     }
 
     #[private] // Only callable by the contract itself
-    pub fn callback_method(
+    pub fn sign_request_callback(
         &mut self,
         #[callback_result] call_result: Result<SignatureResponse, PromiseError>,
-    ) {
+        tx_json_string: String,
+    ) -> Vec<u8>{
         let response = match call_result {
             Ok(json) => {
                 near_sdk::env::log_str(&format!("Parsed JSON response: {:?}", json));
@@ -224,50 +242,55 @@ impl ProxyContract {
         };
 
         // Big R value from the MPC signature
-        let affine_point = response.big_r.affine_point;
+        let big_r = response.big_r.affine_point;
         let scalar = response.s.scalar;
         let recovery_id = response.recovery_id;
-        near_sdk::env::log_str(&format!("R value: {}", affine_point));
+        near_sdk::env::log_str(&format!("R value: {}", big_r));
         near_sdk::env::log_str(&format!("S value: {}", scalar));
         near_sdk::env::log_str(&format!("Recovery ID value: {}", recovery_id));
 
-        //TODO - fix the serialization of the signature https://github.com/keypom/keypom-js/blob/a422762d00f843fefd4e5f46bba180ae69c376ea/packages/trial-accounts/src/lib/broadcastTransaction.ts#L102
-        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/transactions/src/sign.ts#L39
-        //https://github.com/near/near-api-js/blob/master/packages/transactions/src/signature.ts#L21
-        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/providers/src/json-rpc-provider.ts#L112C32-L112C49
-        // Reconstruct signature
-        match self.reconstruct_signature(&affine_point, &scalar, &recovery_id) {
-            Ok(reconstructed) => {
-                // As hex string
-                //TODO - start here. get help converting the signature into borsh prior as needed to be broadcast
-                near_sdk::env::log_str(&format!("Reconstructed signature (hex): {}", hex::encode(&reconstructed)));
+        // Split big r into its parts
+        let r = &big_r[2..];
+        let end = &big_r[..2];
 
-                // As base64
-                near_sdk::env::log_str(&format!("Reconstructed signature (base64): {}", base64::engine::general_purpose::STANDARD.encode(&reconstructed)));
+        // Convert hex to bytes
+        let r_bytes = Vec::from_hex(r).expect("Invalid hex in r");
+        let s_bytes = Vec::from_hex(scalar).expect("Invalid hex in s");
+        let end_bytes = Vec::from_hex(end).expect("Invalid hex in end");
 
-                // Split into r and s components (first 32 bytes and last 32 bytes)
-                near_sdk::env::log_str(&format!(
-                    "Reconstructed signature components:\n R: {}\n S: {}",
-                    hex::encode(&reconstructed[..32]),
-                    hex::encode(&reconstructed[32..])
-                ));
-            }
-            Err(e) => {
-                near_sdk::env::log_str(&format!("Failed to reconstruct signature: {}", e));
-                panic!("Failed to reconstruct signature: {}", e);
-            }
-        }
+        // Add individual bytes together in the correct order
+        let mut signature_bytes = [0u8; 65];
+        signature_bytes[..32].copy_from_slice(&r_bytes);
+        signature_bytes[32..64].copy_from_slice(&s_bytes);
+        signature_bytes[64] = end_bytes[0];
+
+        // Create signature
+        let omni_signature = Signature::SECP256K1(Secp256K1Signature(signature_bytes));
+
+        // Deserialize transaction
+        let near_tx = serde_json::from_str::<NearTransaction>(&tx_json_string)
+                .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
+
+        // Add signature to transaction
+        let near_tx_signed = near_tx.build_with_signature(omni_signature);
+
+        let base64_tx = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &near_tx_signed);
+        near_sdk::env::log_str(&format!("Signed transaction (base64): {}", base64_tx));
+
+        near_tx_signed
+
     }
 
     fn convert_pk_to_omni(pk: &PublicKey) -> omni_transaction::near::types::PublicKey {
         // TODO We might need to expand this to support ETH/other curve types
         let public_key_data = &pk.as_bytes()[1..]; // Skipping the first byte which is the curve type
-        const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
-        let ed25519_key: [u8; ED25519_PUBLIC_KEY_LENGTH] = public_key_data
+        //const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
+        const SECP256K1_PUBLIC_KEY_LENGTH: usize = 64;
+        let ed25519_key: [u8; SECP256K1_PUBLIC_KEY_LENGTH] = public_key_data
             .try_into()
-            .expect("Failed to convert ED25519 public key");
+            .expect("Failed to convert public key");
 
-        OmniPublicKey::ED25519(OmniEd25519PublicKey::from(ed25519_key))
+        OmniPublicKey::SECP256K1(Secp256K1PublicKey::from(ed25519_key))
     }
 
     fn hash_payload(payload: &[u8]) -> [u8; 32] {
@@ -327,41 +350,6 @@ impl ProxyContract {
             self.owner_id,
             "Be gone. You have no power here."
         );
-    }
-
-    fn reconstruct_signature(&self, big_r: &str, big_s: &str, recovery: &u8) -> Result<Vec<u8>, String> {
-
-        // Extract first 2 chars from r (recovery id) and rest of r
-        // add 27 as per signet https://github.com/sig-net/signet.js/blob/main/src/utils/cryptography.ts#L27
-        let recovery_id = recovery + 27;
-        near_sdk::env::log_str(&format!("Recovery ID modified value: {}", recovery_id));
-        let r_value = &big_r[2..];
-
-        // Convert components to byte vectors
-        let r_bytes = hex::decode(r_value).map_err(|_| "Failed to decode r value hex")?;
-        let s_bytes = hex::decode(big_s).map_err(|_| "Failed to decode s value hex")?;
-        let recovery_bytes = vec![recovery_id];
-
-        // Concatenate in order: r_bytes + s_bytes + recovery_bytes
-        let mut signature = Vec::with_capacity(r_bytes.len() + s_bytes.len() + recovery_bytes.len());
-        signature.extend_from_slice(&r_bytes);
-        signature.extend_from_slice(&s_bytes);
-        signature.extend_from_slice(&recovery_bytes);
-
-        // Log component sizes for debugging
-        near_sdk::env::log_str(&format!(
-            "Signature component lengths - R: {}, S: {}, Recovery: {}",
-            r_bytes.len(),
-            s_bytes.len(),
-            recovery_bytes.len()
-        ));
-
-        // Verify Secp256k1Signature length
-        if signature.len() != 65 {
-            return Err(format!("Invalid signature length {}", signature.len()));
-        }
-
-        Ok(signature)
     }
 }
 
