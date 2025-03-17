@@ -35,12 +35,12 @@ echo "Derived MPC key: $DERIVED_KEY"
 
 # Add the derived key as full access
 echo "Adding derived key as full access key to $ACCOUNT_ID..."
-echo "near account add-key "$ACCOUNT_ID" \
+near account add-key "$ACCOUNT_ID" \
     grant-full-access \
     use-manually-provided-public-key $DERIVED_KEY \
     network-config $NETWORK \
     sign-with-keychain \
-    send"
+    send
 
 # Check result
 if [ $? -eq 0 ]; then
