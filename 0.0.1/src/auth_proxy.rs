@@ -160,9 +160,16 @@ impl ProxyContract {
 
         near_sdk::env::log_str(&format!("nonce value: {}", nonce.0));
 
+        near_sdk::env::log_str(&format!(
+            "predecessor_account_id: {}, owner_id: {}, current account id: {}",
+            env::predecessor_account_id(),
+            self.owner_id,
+            env::current_account_id()
+        ));
+
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
-            .signer_id(self.owner_id.to_string())
+            .signer_id(env::current_account_id().to_string())
             .signer_public_key(Self::convert_pk_to_omni(&PublicKey::from_str(&mpc_signer_pk).unwrap()))
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
