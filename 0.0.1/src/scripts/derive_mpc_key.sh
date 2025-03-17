@@ -31,7 +31,28 @@ fi
 echo "$PUBLIC_KEY"
 DERIVED_KEY=$(near view $MPC_CONTRACT_ID derived_public_key "{\"path\":\"$PUBLIC_KEY\", \"predecessor\": \"$ACCOUNT_ID\"}" | tr -d '"')
 
-echo "Derived MPC key: $DERIVED_KEY"
+# Save to environment variable
+if [ -n "$ZSH_VERSION" ]; then
+    PROFILE_FILE="$HOME/.zshrc"
+elif [ -n "$BASH_VERSION" ]; then
+    PROFILE_FILE="$HOME/.bash_profile"
+else
+    PROFILE_FILE="$HOME/.profile"
+fi
+
+# Remove any existing entries
+sed -i '' '/export MPC_DERIVED_PK=/d' "$PROFILE_FILE"
+
+# Add new environment variable
+echo "export MPC_DERIVED_PK=\"$DERIVED_KEY\"" >> "$PROFILE_FILE"
+
+# Export for current session
+export MPC_DERIVED_PK="$DERIVED_KEY"
+
+echo "Derived MPC key: $MPC_DERIVED_PK"
+echo "MPC_DERIVED_PK has been added to $PROFILE_FILE"
+echo "source $PROFILE_FILE"
+echo "To apply changes in new terminals, please run: source $PROFILE_FILE"
 
 # Add the derived key as full access
 echo "Adding derived key as full access key to $ACCOUNT_ID..."

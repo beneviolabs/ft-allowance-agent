@@ -26,7 +26,8 @@ ARGS='{
     "gas": "0",
     "deposit": "1000000000000000000000000",
     "nonce": "'"$NONCE"'",
-    "block_hash": "'"$BLOCK_HASH"'"
+    "block_hash": "'"$BLOCK_HASH"'",
+    "mpc_signer_pk": "'"$MPC_DERIVED_PK"'"
 }'
 
 # Make the contract call

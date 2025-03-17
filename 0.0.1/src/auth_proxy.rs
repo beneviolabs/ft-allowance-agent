@@ -109,6 +109,7 @@ impl ProxyContract {
         deposit: NearToken,
         nonce: U64,
         block_hash: Base58CryptoHash,
+        mpc_signer_pk: String,
     ) -> Promise {
         assert!(
             env::prepaid_gas() >= GAS_FOR_REQUEST_SIGNATURE,
@@ -162,7 +163,7 @@ impl ProxyContract {
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(self.owner_id.to_string())
-            .signer_public_key(Self::convert_pk_to_omni(&PublicKey::from_str("secp256k1:4VpBxc5ykqNNZ92zFeFp2NL18TUG9miZXZuC3JC8tzo9i2kxPPPkR3gCWCE5Q5pxH2xMJXufpFZR2PHi7rZpvaFn").unwrap())) //TODO programmatically get the public key per accountId & derivation path
+            .signer_public_key(Self::convert_pk_to_omni(&PublicKey::from_str(&mpc_signer_pk).unwrap()))
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
