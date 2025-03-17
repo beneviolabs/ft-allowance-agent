@@ -16,7 +16,7 @@ echo "Building contract..."
 env RUSTFLAGS='-Ctarget-cpu=mvp' cargo +nightly build -Zbuild-std=panic_abort,std --target=wasm32-unknown-unknown --release
 
 # Set variables
-WASM_PATH="target/wasm32-unknown-unknown/release/proxy_contract.wasm"
+WASM_PATH="../target/wasm32-unknown-unknown/release/proxy_contract.wasm"
 
 # Check if WASM file exists
 if [ ! -f "$WASM_PATH" ]; then
