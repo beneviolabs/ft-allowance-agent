@@ -46,7 +46,10 @@ pub struct SignatureResponse {
     pub recovery_id: u8,
 }
 
-const GAS_FOR_REQUEST_SIGNATURE: NearGas = NearGas::from_tgas(10);
+const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(50);
+const BASE_GAS: Gas = Gas::from_tgas(5);  // Base gas for contract execution
+const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
+
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
 //const MAINNET_SIGNER: &str = "v1.signer";
 
@@ -98,44 +101,42 @@ impl ProxyContract {
         self.signer_contract.clone()
     }
 
-    // test with a call to 'near call charleslavon.testnet transfer_near '{"receiver_id":"charleslavon.testnet", "amount": "1"}' --accountId 00700.testnet
     #[payable]
     pub fn request_signature(
         &mut self,
         contract_id: AccountId,
         method_name: String,
         args: Vec<u8>,
-        gas: Gas,
+        gas: U64,
         deposit: NearToken,
         nonce: U64,
         block_hash: Base58CryptoHash,
         mpc_signer_pk: String,
     ) -> Promise {
+
+        let attached_gas = env::prepaid_gas();
         assert!(
-            env::prepaid_gas() >= GAS_FOR_REQUEST_SIGNATURE,
-            "Not enough gas attached. Please attach 10 TGas"
+            attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
+            "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
+            GAS_FOR_REQUEST_SIGNATURE.as_tgas(),
+            attached_gas.as_tgas()
         );
+
         assert!(
             self.authorized_users
                 .contains(&env::predecessor_account_id()),
             "Unauthorized: only authorized users can request signatures"
         );
 
-        //require!(
-        //    deposit.as_yoctonear() > 0,
-        //    "Deposit allocated for MPC can't be zero"
-        //);
-        //
-        //require!(
-        //    env::prepaid_gas() >= Gas::from_tgas(260),
-        //    "Minimal prepaid gas is 260TGas as fewer amount won't be allowed by MPC anyway"
-        //);
+        // Calculate remaining gas after base costs
+        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
+        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
 
         near_sdk::env::log_str(&format!(
             "Request received - Contract: {}, Method: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
             contract_id,
             method_name,
-            gas.as_gas(),
+            gas.0,
             deposit.as_yoctonear(),
             nonce.0,
             block_hash
@@ -144,7 +145,7 @@ impl ProxyContract {
         let action = NearAction {
             method_name: method_name.clone(),
             contract_id: contract_id.clone(),
-            gas_attached: gas,
+            gas_attached: NearGas::from_gas(gas.0),
             deposit_attached: deposit,
         };
 
@@ -154,18 +155,11 @@ impl ProxyContract {
         let actions = vec![OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
             method_name: method_name.clone(),
             args: args.clone(),
-            gas: OmniU64(gas.as_gas()),
+            gas: OmniU64(gas.into()),
             deposit: OmniU128(deposit.as_yoctonear()),
         }))];
 
-        near_sdk::env::log_str(&format!("nonce value: {}", nonce.0));
-
-        near_sdk::env::log_str(&format!(
-            "predecessor_account_id: {}, owner_id: {}, current account id: {}",
-            env::predecessor_account_id(),
-            self.owner_id,
-            env::current_account_id()
-        ));
+        near_sdk::env::log_str(&format!("Near Token deposit amount: {}", deposit));
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
@@ -192,7 +186,7 @@ impl ProxyContract {
             block_hash
         ));
 
-        // helpful referencesq
+        // helpful references
         // https://github.com/PiVortex/subscription-example/blob/main/contract/src/charge_subscription.rs#L129
         //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/transactions/src/sign.ts#L39
         //https://github.com/near/near-api-js/blob/master/packages/transactions/src/signature.ts#L21
@@ -203,15 +197,15 @@ impl ProxyContract {
 
         // Log arguments used for signature request
         near_sdk::env::log_str(&format!(
-            "Signing request - Hashed payload: {:?}, Path: {}, Key Version: {}",
-            hashed_payload,
-            ProxyContract::public_key_to_string(&env::signer_account_pk()),
+            "Signing request - transaction hash: {:?}, Path: {}, Key Version: {}",
+            bs58::encode(&hashed_payload).into_string(),
+            "ed25519:71BRk6DLCgBRrQe6KLyPQGNiXoPJGKhP79Mjyeucu2fN",
             0
         ));
-        // Create a signature request request for the hashed payload
+        // Create a signature request for the hashed payload
         let request = SignRequest {
             payload: hashed_payload.to_vec(),
-            path: ProxyContract::public_key_to_string(&env::signer_account_pk()),
+            path: "ed25519:71BRk6DLCgBRrQe6KLyPQGNiXoPJGKhP79Mjyeucu2fN".to_string(), // TODO add this pk value programmatically
             key_version: 0,
         };
 
@@ -223,11 +217,11 @@ impl ProxyContract {
                 "sign".to_string(),
                 near_sdk::serde_json::to_vec(&request_payload).unwrap(),
                 env::attached_deposit(),
-                GAS_FOR_REQUEST_SIGNATURE,
+                gas_for_signing,
             )
             .then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_REQUEST_SIGNATURE)
+                    .with_static_gas(CALLBACK_GAS)
                     .sign_request_callback(tx_json_string),
             )
     }
@@ -459,10 +453,11 @@ mod tests {
             accounts(3),                       // contract_id: AccountId
             "test_method".to_string(),         // method_name: String
             vec![1, 2, 3],                     // args: Vec<u8>
-            Gas::from_tgas(10),                // gas: Gas
+            near_sdk::json_types::U64(10),                // gas: U64
             NearToken::from_near(1),           // deposit: NearToken
             U64(1),                            // nonce: U64
             Base58CryptoHash::from([0u8; 32]), // block_hash: Base58CryptoHash
+            "secp256k1:abcd1234".to_string(),
         );
     }
 
@@ -484,10 +479,11 @@ mod tests {
             accounts(3),                       // contract_id
             "test_method".to_string(),         // method_name
             vec![1, 2, 3],                     // args
-            Gas::from_tgas(10),                // gas
+            near_sdk::json_types::U64(10),                // gas
             NearToken::from_near(1),           // deposit
             U64(1),                            // nonce
             Base58CryptoHash::from([0u8; 32]), // block_hash
+            "secp256k1:abcd1234".to_string(),
         );
     }
 
@@ -505,10 +501,11 @@ mod tests {
             "wrap.near".parse().unwrap(),
             "ft_transfer".to_string(),
             vec![1, 2, 3],
-            Gas::from_tgas(10),
+            near_sdk::json_types::U64(10),
             NearToken::from_near(1),
             U64(1),
             Base58CryptoHash::from([0u8; 32]),
+            "secp256k1:abcd1234".to_string(),
         );
     }
 }
