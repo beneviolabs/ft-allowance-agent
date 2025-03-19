@@ -23,7 +23,7 @@ class Agent:
         self.allowance_goal = None
         self.prices = None
         self.recommended_tokens = None
-        self.near_account_id = None
+        self._near_account_id = None
         self.near_account_balance = None
         tool_registry = self.env.get_tool_registry()
         tool_registry.register_tool(
@@ -34,6 +34,12 @@ class Agent:
         tool_registry.register_tool(self.save_near_account_id)
         tool_registry.register_tool(self.get_near_account_balance)
         tool_registry.register_tool(self.fetch_token_prices)
+
+    @property
+    def near_account_id(self) -> str | None:
+        if not self._near_account_id:
+            self._near_account_id = self.env.read_file("near_id.txt")
+        return self._near_account_id
 
     def find_growth_goal(self, chat_history):
         for message in reversed(chat_history):
@@ -163,7 +169,6 @@ You must follow the following instructions:
     def fetch_token_prices(self):
         """Fetch the current market prices of the tokens in a user's wallet"""
         tool_name = self._get_tool_name()
-        self.find_near_account_id()
         balance = get_near_account_balance(self.near_account_id)
         if balance:
             if len(balance) > 23:
@@ -259,21 +264,13 @@ You must follow the following instructions:
         return str(self.recommended_tokens) if self.recommended_tokens else ""
 
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
-        """Save the near ID the user provides
-        FIXME: We need to find a way to get the LLM to trigger this. Right now it calls an
-        SDK defined tool called `read_file`. It differs from our other tools in that we don't have a user input yet
-        for the LLM to parse and know to trigger this function so we need to redesign the flow
-        either using something like [query rephrasing](https://python.langchain.com/docs/integrations/retrievers/re_phrase/)
-        Or establishing a statemachine to track which op/transaction we're in.
-        """
+        """Save the near ID the user provides"""
         responses = []
         # TODO: add some validation
         if near_id:
-            print(f"Saving NEAR account ID: {near_id}")
-            self.near_account_id = near_id
+            self._persist_near_id(near_id)
             self.env.add_reply(
                 f"Saved your NEAR account ID: {self.near_account_id}",
-                message_type="system",
             )
         else:
             self.env.add_reply(
@@ -281,6 +278,11 @@ You must follow the following instructions:
                 message_type="system",
             )
         return responses
+
+    def _persist_near_id(self, near_id: str):
+        """Persist the NEAR account ID to storage and set it to the class instance variable"""
+        self.env.write_file("near_id.txt", near_id)
+        self._near_account_id = near_id
 
 
 if globals().get("env", None):
