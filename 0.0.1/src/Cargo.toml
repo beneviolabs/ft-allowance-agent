@@ -18,6 +18,7 @@ omni-transaction = "0.2.0"
 sha2 = "0.10.8"
 serde_json = "1.0"
 hex = "0.4.3"
+schemars = "0.8.22"
 
 
 [dev-dependencies]

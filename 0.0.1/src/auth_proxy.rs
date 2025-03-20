@@ -11,9 +11,8 @@ use near_sdk::{
 };
 use near_sdk::base64;
 use hex::FromHex;
-use omni_transaction::transaction_builder::TransactionBuilder;
-use omni_transaction::transaction_builder::TxBuilder;
-use omni_transaction::near::near_transaction::NearTransaction;
+use omni_transaction::TxBuilder;
+use omni_transaction::TransactionBuilder;
 use omni_transaction::{
     near::types::{
         Action as OmniAction, BlockHash as OmniBlockHash,
@@ -245,7 +244,7 @@ impl ProxyContract {
         let omni_signature = Signature::SECP256K1(Secp256K1Signature(signature_bytes));
 
         // Deserialize transaction
-        let near_tx = serde_json::from_str::<NearTransaction>(&tx_json_string)
+        let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
                 .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
 
         // Add signature to transaction
