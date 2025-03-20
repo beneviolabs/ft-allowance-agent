@@ -47,7 +47,8 @@ ARGS='{
     "deposit": "1000000000000000000000000",
     "nonce": "'"$NONCE"'",
     "block_hash": "'"$BLOCK_HASH"'",
-    "mpc_signer_pk": "'"$MPC_DERIVED_PK"'"
+    "mpc_signer_pk": "'"$MPC_DERIVED_PK"'",
+    "account_pk_for_mpc": "'"$USER_PUBLIC_KEY_FOR_MPC"'"
 }'
 
 # Make the contract call

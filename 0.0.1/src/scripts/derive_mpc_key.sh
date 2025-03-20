@@ -42,17 +42,21 @@ fi
 
 # Remove any existing entries
 sed -i '' '/export MPC_DERIVED_PK=/d' "$PROFILE_FILE"
+sed -i '' '/export USER_PUBLIC_KEY_FOR_MPC=/d' "$PROFILE_FILE"
 
-# Add new environment variable
+# Add new environment variables
+echo "export USER_PUBLIC_KEY_FOR_MPC=\"$PUBLIC_KEY\"" >> "$PROFILE_FILE"
 echo "export MPC_DERIVED_PK=\"$DERIVED_KEY\"" >> "$PROFILE_FILE"
 
 # Export for current session
 export MPC_DERIVED_PK="$DERIVED_KEY"
+export USER_PUBLIC_KEY_FOR_MPC="$PUBLIC_KEY"
 
 echo "Derived MPC key: $MPC_DERIVED_PK"
 echo "MPC_DERIVED_PK has been added to $PROFILE_FILE"
-echo "source $PROFILE_FILE"
-echo "To apply changes in new terminals, please run: source $PROFILE_FILE"
+echo "USER_PUBLIC_KEY_FOR_MPC has been added to $PROFILE_FILE"
+source $PROFILE_FILE
+#echo "To apply changes in new terminals, please run: source $PROFILE_FILE"
 
 # Add the derived key as full access
 echo "Adding derived key as full access key to $ACCOUNT_ID..."
