@@ -11,16 +11,17 @@ from src.utils import (
     get_near_account_balance,
 )
 
-USD_PORTFOLIO_GOAL_REGEX = re.compile(r"portfolio:\s*(\d+)")
-USD_ALLOWANCE_GOAL_REGEX = re.compile(r"allowance:\s*(\d+)")
 NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
+
+DIVVY_GOALS = set(["allowance", "growth"])
+DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
 
 
 class Agent:
 
     def __init__(self, env: Environment):
         self.env = env
-        self.allowance_goal = None
+        self._allowance_goal = None
         self.prices = None
         self.recommended_tokens = None
         self._near_account_id = None
@@ -30,10 +31,10 @@ class Agent:
         tool_registry.register_tool(
             self.recommend_token_allocations_to_swap_for_stablecoins
         )
-        tool_registry.register_tool(self.get_allowance_goal)
         tool_registry.register_tool(self.get_near_account_id)
         tool_registry.register_tool(self.save_near_account_id)
-        tool_registry.register_tool(self.get_growth_goal)
+        tool_registry.register_tool(self.get_goals)
+        tool_registry.register_tool(self.save_goal)
         tool_registry.register_tool(self.get_near_account_balance)
         tool_registry.register_tool(self.fetch_token_prices)
 
@@ -44,23 +45,16 @@ class Agent:
         return self._near_account_id
 
     @property
+    def allowance_goal(self) -> str | None:
+        if not self._allowance_goal:
+            self._allowance_goal = self.env.read_file("allowance_goal.txt")
+        return self._allowance_goal
+
+    @property
     def growth_goal(self) -> str | None:
         if not self._growth_goal:
             self._growth_goal = self.env.read_file("growth_goal.txt")
         return self._growth_goal
-
-    def find_allowance_goal(self, chat_history):
-        for message in reversed(chat_history):
-            match = USD_ALLOWANCE_GOAL_REGEX.match(message["content"])
-            if message["role"] == "user" and match:
-                return match.group(1)
-        return ""
-
-    def get_last_search_term(self, chat_history):
-        for message in reversed(chat_history):
-            if message["role"] == "user":
-                return message["content"]
-        return ""
 
     def run(self):
         # A system message guides an agent to solve specific tasks.
@@ -114,18 +108,6 @@ You must follow the following instructions:
                     f"Got completion for tool call with results: {result}. Context: {context}",
                     logging.DEBUG,
                 )
-
-        chat_history = self.env.list_messages()
-        last_user_query = self.get_last_search_term(chat_history)
-        if (
-            last_user_query == "recommend swaps"
-            or last_user_query == "suggest tokens to swap"
-        ):
-            result = self.recommend_token_allocations_to_swap_for_stablecoins()
-        elif last_user_query == "show allowance goal":
-            result = self.get_allowance_goal()
-        elif last_user_query == "show growth goal":
-            result = self.get_growth_goal()
 
         if result:
             self.env.add_reply(result)
@@ -212,28 +194,26 @@ You must follow the following instructions:
 
         return [self._to_function_response(tool_name, self.prices)]
 
-    def get_growth_goal(self):
-        """Return the growth goal that the user has set for their portfolio"""
+    def get_goals(self):
+        """
+        Return the goals that the user has set for their portfolio
+        This includes growth and allowance goals
+        """
         responses = []
-        if not self.growth_goal:
-            self.env.add_reply(
-                "The user hasn't set a growth goal yet. Prompt them to provide one.",
-                message_type="system",
-            )
+        goals = {}
+        for type_, goal in [
+            ("growth", self.growth_goal),
+            ("allowance", self.allowance_goal),
+        ]:
+            if not goal:
+                self.env.add_reply(
+                    f"The user hasn't set a {type_} goal yet. Prompt them to provide one.",
+                    message_type="system",
+                )
+            goals[type_] = goal
 
-        responses.append(
-            self._to_function_response(self._get_tool_name(), self.near_account_id)
-        )
+        responses.append(self._to_function_response(self._get_tool_name(), goals))
         return responses
-
-    def get_allowance_goal(self):
-        """Given user prompts referring to goals, goal, usd, allowance, and target, find the allowance goal"""
-        chat_history = self.env.list_messages()
-
-        allowance_goal = self.find_allowance_goal(chat_history)
-        if not self.allowance_goal and allowance_goal:
-            self.allowance_goal = allowance_goal
-        return self.allowance_goal
 
     def _handle_tool_calls(
         self, tool_calls: typing.List[ChatCompletionMessageToolCall]
@@ -261,7 +241,6 @@ You must follow the following instructions:
             self.env.add_reply(
                 f"Considering your options with a preference for holding BTC..."
             )
-            self.get_allowance_goal()
             self.recommended_tokens = get_recommended_token_allocations(
                 int(self.allowance_goal)
             )
@@ -285,10 +264,34 @@ You must follow the following instructions:
             )
         return responses
 
+    def save_goal(self, goal: int, type_: DivvyGoalType) -> typing.List[typing.Dict]:
+        """Save the growth or allowance goal the user provides.
+        If they don't specify which goal type, ask them to disambiguate.
+        """
+        responses = []
+        if type_ in DIVVY_GOALS and goal > 0:
+            self._persist_goal(goal, type_)
+            self.env.add_reply(
+                f"Saved your {type_} goal: {goal}",
+            )
+        else:
+            self.env.add_reply(
+                "Please provide a valid goal amount and specify whether it's a growth or allowance goal.",
+            )
+        return responses
+
     def _persist_near_id(self, near_id: str):
         """Persist the NEAR account ID to storage and set it to the class instance variable"""
         self.env.write_file("near_id.txt", near_id)
         self._near_account_id = near_id
+
+    def _persist_goal(self, goal: int, type_: DivvyGoalType) -> int:
+        """Persist the growth or allowance goal to storage and set it to the class instance variable"""
+        self.env.write_file(f"{type_}_goal.txt", str(goal))
+        if type_ == "allowance":
+            self._allowance_goal = goal
+        if type == "growth":
+            self._growth_goal = goal
 
 
 if globals().get("env", None):
