@@ -31,7 +31,7 @@ class Agent:
             self.recommend_token_allocations_to_swap_for_stablecoins
         )
         tool_registry.register_tool(self.get_allowance_goal)
-        tool_registry.register_tool(self.find_near_account_id)
+        tool_registry.register_tool(self.get_near_account_id)
         tool_registry.register_tool(self.save_near_account_id)
         tool_registry.register_tool(self.get_growth_goal)
         tool_registry.register_tool(self.get_near_account_balance)
@@ -150,8 +150,8 @@ You must follow the following instructions:
         """Return the function name of the calling function as the tool name"""
         return inspect.stack()[1][3]
 
-    def find_near_account_id(self) -> typing.List[typing.Dict]:
-        """Find the NEAR account ID of the user"""
+    def get_near_account_id(self) -> typing.List[typing.Dict]:
+        """Get the NEAR account ID of the user"""
         tool_name = self._get_tool_name()
         responses = []
         if not self.near_account_id:
@@ -284,7 +284,6 @@ You must follow the following instructions:
         else:
             self.env.add_reply(
                 "Please provide a valid NEAR account ID.",
-                message_type="system",
             )
         return responses
 
