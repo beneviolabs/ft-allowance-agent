@@ -64,20 +64,18 @@ class Agent:
 
     def run(self):
         # A system message guides an agent to solve specific tasks.
-        # TODO: probably best to deduplicate the list of capabilities in this prompt and instead tell the LLM to rely on the function docstrings from the tool registry
         prompt = {
             "role": "system",
             "content": """
 You are Divvy, a financial assistant that helps users manage and grow their crypto portfolio.
+You have access NEAR account details of a user (such as the balance and id).
+You can fetch the current market prices of crypto tokens in a user's wallet.
+You can allow the user to set growth and allowance goals on their portfolio.
 
-Your capabilities are defined below and are facilitated by the tools you have access to.
+Your capabilities are defined and facilitated by the tools you have access to except your disallowed tools.
 
--Capabilities-
-* You can recommend the tokens and quantities of each asset on a user's portfolio to swap for USDT or USDC stablecoins.
-* You can fetch the current prices of crypto tokens in a user's wallet (e.g. NEAR, BTC, ETH, SOL).
-* You have access NEAR account details of a user such as the balance and id.
-* You can fetch the user's growth goal.
-* You can fetch the user's allowance goal.
+-Disallowed tools-
+`list_files, query_vector_store, write_file, request_user_input, read_file, exec_command`.
 
 You must follow the following instructions:
 
@@ -164,14 +162,14 @@ You must follow the following instructions:
         return responses
 
     def get_near_account_balance(self) -> typing.List[typing.Dict]:
-        """Get the NEAR account balance of the user in yoctoNEAR"""
+        """Get the NEAR account balance of the user"""
         tool_name = self._get_tool_name()
         balance = get_near_account_balance(self.near_account_id)
         return [self._to_function_response(tool_name, balance)]
 
     # IMPROVE: this function can be parameterized to only query prices for tokens user specifies and fetch all if there's no param value
     def fetch_token_prices(self):
-        """Fetch the current market prices of the tokens in a user's wallet"""
+        """Fetch the current market prices of the tokens in a user's wallet (e.g. NEAR, BTC, ETH, SOL)"""
         tool_name = self._get_tool_name()
         balance = get_near_account_balance(self.near_account_id)
         if balance:
@@ -274,7 +272,7 @@ You must follow the following instructions:
         return str(self.recommended_tokens) if self.recommended_tokens else ""
 
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
-        """Save the near ID the user provides"""
+        """Save the Near account ID the user provides"""
         responses = []
         if near_id and NEAR_ID_REGEX.match(near_id):
             self._persist_near_id(near_id)
