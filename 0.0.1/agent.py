@@ -13,17 +13,18 @@ from src.utils import (
 
 USD_PORTFOLIO_GOAL_REGEX = re.compile(r"portfolio:\s*(\d+)")
 USD_ALLOWANCE_GOAL_REGEX = re.compile(r"allowance:\s*(\d+)")
+NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
 
 class Agent:
 
     def __init__(self, env: Environment):
         self.env = env
-        self.growth_goal = None
         self.allowance_goal = None
         self.prices = None
         self.recommended_tokens = None
         self._near_account_id = None
+        self._growth_goal = None
         self.near_account_balance = None
         tool_registry = self.env.get_tool_registry()
         tool_registry.register_tool(
@@ -32,6 +33,7 @@ class Agent:
         tool_registry.register_tool(self.get_allowance_goal)
         tool_registry.register_tool(self.find_near_account_id)
         tool_registry.register_tool(self.save_near_account_id)
+        tool_registry.register_tool(self.get_growth_goal)
         tool_registry.register_tool(self.get_near_account_balance)
         tool_registry.register_tool(self.fetch_token_prices)
 
@@ -41,12 +43,11 @@ class Agent:
             self._near_account_id = self.env.read_file("near_id.txt")
         return self._near_account_id
 
-    def find_growth_goal(self, chat_history):
-        for message in reversed(chat_history):
-            match = USD_PORTFOLIO_GOAL_REGEX.match(message["content"])
-            if message["role"] == "user" and match:
-                return match.group(1)
-        return ""
+    @property
+    def growth_goal(self) -> str | None:
+        if not self._growth_goal:
+            self._growth_goal = self.env.read_file("growth_goal.txt")
+        return self._growth_goal
 
     def find_allowance_goal(self, chat_history):
         for message in reversed(chat_history):
@@ -136,6 +137,9 @@ You must follow the following instructions:
 
     @staticmethod
     def _to_function_response(function_name: str, value: typing.Any) -> typing.Dict:
+        """
+        Use to tell the LLM the result from a function call in a structured way
+        """
         return {
             "role": "function",
             "name": function_name,
@@ -211,12 +215,18 @@ You must follow the following instructions:
         return [self._to_function_response(tool_name, self.prices)]
 
     def get_growth_goal(self):
-        """Given user prompts referring to portfolio growth, token growth, find their USD growth goal"""
-        chat_history = self.env.list_messages()
-        growth_goal = self.find_growth_goal(chat_history)
-        if not self.growth_goal and growth_goal:
-            self.growth_goal = growth_goal
-        return self.growth_goal
+        """Return the growth goal that the user has set for their portfolio"""
+        responses = []
+        if not self.growth_goal:
+            self.env.add_reply(
+                "The user hasn't set a growth goal yet. Prompt them to provide one.",
+                message_type="system",
+            )
+
+        responses.append(
+            self._to_function_response(self._get_tool_name(), self.near_account_id)
+        )
+        return responses
 
     def get_allowance_goal(self):
         """Given user prompts referring to goals, goal, usd, allowance, and target, find the allowance goal"""
@@ -266,8 +276,7 @@ You must follow the following instructions:
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
         """Save the near ID the user provides"""
         responses = []
-        # TODO: add some validation
-        if near_id:
+        if near_id and NEAR_ID_REGEX.match(near_id):
             self._persist_near_id(near_id)
             self.env.add_reply(
                 f"Saved your NEAR account ID: {self.near_account_id}",
