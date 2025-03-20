@@ -78,5 +78,4 @@ echo "Environment variables have been set:"
 echo "AGENT_PROXY_ACCOUNT=$AGENT_PROXY_ACCOUNT"
 echo "AGENT_PARENT_ACCOUNT=$AGENT_PARENT_ACCOUNT"
 echo "Variables have been added to $PROFILE_FILE"
-source $PROFILE_FILE
-#echo "To apply changes in new terminals, please run: source $PROFILE_FILE"
+echo "To apply changes in new terminals, please run: source $PROFILE_FILE"

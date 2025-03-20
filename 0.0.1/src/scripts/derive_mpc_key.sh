@@ -55,8 +55,7 @@ export USER_PUBLIC_KEY_FOR_MPC="$PUBLIC_KEY"
 echo "Derived MPC key: $MPC_DERIVED_PK"
 echo "MPC_DERIVED_PK has been added to $PROFILE_FILE"
 echo "USER_PUBLIC_KEY_FOR_MPC has been added to $PROFILE_FILE"
-source $PROFILE_FILE
-#echo "To apply changes in new terminals, please run: source $PROFILE_FILE"
+echo "To apply changes in new terminals, please run: source $PROFILE_FILE"
 
 # Add the derived key as full access
 echo "Adding derived key as full access key to $ACCOUNT_ID..."
