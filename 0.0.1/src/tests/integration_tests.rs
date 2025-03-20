@@ -13,8 +13,6 @@ mod integration_tests {
         let proxy_contract = worker.dev_deploy(WASM_FILEPATH).await?;
         let owner = proxy_contract.as_account();
 
-        // println!("Owner is : {:?}", owner);
-
         // Initialize the contract
         let _result = proxy_contract
             .call("new")
@@ -23,8 +21,6 @@ mod integration_tests {
             }))
             .transact()
             .await?;
-
-        // println!("Contract initialized");
 
         Ok((proxy_contract.clone(), owner.clone()))
     }

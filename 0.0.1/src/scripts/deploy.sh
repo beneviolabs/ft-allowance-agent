@@ -1,5 +1,4 @@
 #!/bin/bash
-# filepath: /Users/charles/.nearai/registry/charleslavon.near/ft-allowance/0.0.1/src/scripts/deploy.sh
 
 # Check if NEAR CLI is installed
 if ! command -v near &> /dev/null; then
