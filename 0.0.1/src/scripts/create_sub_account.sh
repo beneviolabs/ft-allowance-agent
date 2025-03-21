@@ -14,9 +14,9 @@ fi
 PARENT_ACCOUNT="$1"
 
 # Validate parent account format
-if [[ ! $PARENT_ACCOUNT =~ ^[a-z0-9_-]+\.testnet$ ]]; then
+if [[ ! $PARENT_ACCOUNT =~ ^[a-z0-9_-]+\.(testnet|near)$ ]]; then
     echo "Error: Invalid parent account format"
-    echo "Account must end with .testnet and contain only lowercase letters, numbers, hyphens, and underscores"
+    echo "Account must end with .testnet or .near and contain only lowercase letters, numbers, hyphens, and underscores"
     exit 1
 fi
 
@@ -32,7 +32,7 @@ near account create-account fund-myself \
     autogenerate-new-keypair \
     save-to-keychain \
     sign-as $PARENT_ACCOUNT \
-    network-config testnet \
+    network-config $NEAR_ENV \
     sign-with-keychain \
     send
 

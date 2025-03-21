@@ -8,7 +8,6 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-# Get account to authorize from parameter
 ACCOUNT_TO_AUTHORIZE="$1"
 
 # Check if AGENT_PROXY_ACCOUNT is set
@@ -33,7 +32,7 @@ near contract call-function as-transaction \
     prepaid-gas '100.0 Tgas' \
     attached-deposit '0 NEAR' \
     sign-as "$AGENT_PARENT_ACCOUNT" \
-    network-config testnet \
+    network-config $NEAR_ENV \
     sign-with-keychain \
     send
 

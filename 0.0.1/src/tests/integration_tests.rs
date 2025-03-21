@@ -137,7 +137,7 @@ mod integration_tests {
             .args_json(json!({
                 "contract_id": "test.near",
                 "method_name": "test_method",
-                "args": vec![1, 2, 3],
+                "args": "[{\"public_key\": \"ed25519:1234\"}]",
                 "gas": "30000000000000",
                 "deposit": "0",
                 "nonce": "1",

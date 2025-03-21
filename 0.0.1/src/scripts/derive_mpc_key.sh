@@ -1,8 +1,11 @@
 #!/bin/bash
 
 # Configuration
-NETWORK="testnet"
-MPC_CONTRACT_ID="v1.signer-prod.testnet"
+if [ "$NEAR_ENV" = "mainnet" ]; then
+    MPC_CONTRACT_ID="v1.signer"
+else
+    MPC_CONTRACT_ID="v1.signer-prod.testnet"
+fi
 
 # Check for AGENT_PROXY_ACCOUNT if no argument provided
 if [ -z "$1" ]; then
@@ -62,7 +65,7 @@ echo "Adding derived key as full access key to $ACCOUNT_ID..."
 near account add-key "$ACCOUNT_ID" \
     grant-full-access \
     use-manually-provided-public-key $DERIVED_KEY \
-    network-config $NETWORK \
+    network-config $NEAR_ENV \
     sign-with-keychain \
     send
 

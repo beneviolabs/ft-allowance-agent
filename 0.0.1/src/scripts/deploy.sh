@@ -51,7 +51,7 @@ if [ "$CONTRACT_INITIALIZATION_REQUIRED" = true ]; then
         json-args '{"owner_id":"'"$AGENT_PARENT_ACCOUNT"'"}' \
         prepaid-gas '100.0 Tgas' \
         attached-deposit '0 NEAR' \
-        network-config testnet \
+        network-config $NEAR_ENV \
         sign-with-keychain \
         send
 else
@@ -59,7 +59,7 @@ else
     near contract deploy "$AGENT_PROXY_ACCOUNT" \
         use-file "$WASM_PATH" \
         without-init-call \
-        network-config testnet \
+        network-config $NEAR_ENV \
         sign-with-keychain \
         send
 fi

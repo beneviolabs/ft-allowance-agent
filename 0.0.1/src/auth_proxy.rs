@@ -39,7 +39,8 @@ const BASE_GAS: Gas = Gas::from_tgas(5);  // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
-//const MAINNET_SIGNER: &str = "v1.signer";
+const MAINNET_SIGNER: &str = "v1.signer";
+
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -54,10 +55,24 @@ impl ProxyContract {
     #[init]
     pub fn new(owner_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");
+
+        // Determine signer contract based on current network
+        let binding = env::current_account_id();
+        let current_network = binding
+            .as_str()
+            .split('.')
+            .last()
+            .unwrap_or("testnet");
+
+        let signer_contract = match current_network {
+            "near" => MAINNET_SIGNER,
+            _ => TESTNET_SIGNER,
+        };
+
         Self {
             owner_id,
             authorized_users: UnorderedSet::new(b"a"),
-            signer_contract: TESTNET_SIGNER.parse().unwrap(),
+            signer_contract: signer_contract.parse().unwrap(),
         }
     }
 
@@ -79,7 +94,7 @@ impl ProxyContract {
         &mut self,
         contract_id: AccountId,
         method_name: String,
-        args: Vec<u8>,
+        args: String,
         gas: U64,
         deposit: NearToken,
         nonce: U64,
@@ -107,9 +122,10 @@ impl ProxyContract {
         let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
 
         near_sdk::env::log_str(&format!(
-            "Request received - Contract: {}, Method: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
+            "Request received - Contract: {}, Method: {}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
             contract_id,
             method_name,
+            args,
             gas.0,
             deposit.as_yoctonear(),
             nonce.0,
@@ -126,9 +142,12 @@ impl ProxyContract {
         // verify the action is permitted
         NearAction::is_allowed(&action);
 
+        // Convert the JSON string to bytes
+        let args_bytes = args.into_bytes();
+
         let actions = vec![OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
             method_name: method_name.clone(),
-            args: args.clone(),
+            args: args_bytes,
             gas: OmniU64(gas.into()),
             deposit: OmniU128(deposit.as_yoctonear()),
         }))];

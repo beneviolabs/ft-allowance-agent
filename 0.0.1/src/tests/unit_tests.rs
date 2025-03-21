@@ -95,7 +95,7 @@ mod tests {
         contract.request_signature(
             accounts(3),                       // contract_id: AccountId
             "test_method".to_string(),         // method_name: String
-            vec![1, 2, 3],                     // args: Vec<u8>
+            "[{\"public_key\": \"ed25519:1234\"}]".to_string(),                     // args: String
             near_sdk::json_types::U64(10),                // gas: U64
             NearToken::from_near(1),           // deposit: NearToken
             U64(1),                            // nonce: U64
@@ -122,7 +122,7 @@ mod tests {
         contract.request_signature(
             accounts(3),                       // contract_id
             "ft_transfer".to_string(),         // method_name
-            vec![1, 2, 3],                     // args
+            "[{\"public_key\": \"ed25519:1234\"}]".to_string(),
             near_sdk::json_types::U64(10),                // gas
             NearToken::from_near(1),           // deposit
             U64(1),                            // nonce
