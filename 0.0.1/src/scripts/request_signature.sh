@@ -83,7 +83,7 @@ execute_deposit() {
     DEPOSIT_ARGS='{
         "contract_id": "'"$CONTRACT_ID"'",
         "method_name": "near_deposit",
-        "args": [],
+        "args": "{}",
         "gas": "300000000000000",
         "deposit": "1000000000000000000000000",
         "nonce": "'"$NONCE"'",
