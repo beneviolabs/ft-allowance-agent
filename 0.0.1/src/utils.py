@@ -264,6 +264,7 @@ class Quote(TypedDict):
     deadline: str
     intents: List[Intent]
 
+
 # TODO replace this with a MPC call to sign an intent payload
 #def sign_quote(quote: dict) -> Commitment:
 #    quote_str = json.dumps(quote)
@@ -272,23 +273,7 @@ class Quote(TypedDict):
 #        base58.b58encode(account.signer.sign(
 #            quote_str.encode('utf-8'))).decode('utf-8')
 #    public_key = 'ed25519:' + \
-#        base58.b58encode(account.signer.public_key).decode('utf-8')
-
-    # Ensure the signature is valid, else raise an exception
-#    try:
-#        check_pub_key = ed25519.Ed25519PublicKey.from_public_bytes(
-#            account.signer.public_key)
-#        check_pub_key.verify(base58.b58decode(
-#            signature[8:]), json.dumps(quote).encode('utf-8'))
-#        print("Signature is valid.")
-#    except ed25519.InvalidSignature:
-#        print("Invalid signature.")
-#
-#    return Commitment(
-#        standard="raw_ed25519",
-#        payload=quote_str,
-#        signature=signature,
-#        public_key=public_key)
+#        base58.b58encode(account.signer.public_key).decode('utf-8')s
 
 
 def publish_intent(signed_intent):
@@ -326,7 +311,7 @@ async def main():
     print("best quote", best_quote)
 
 
-    await get_recommended_token_allocations(3000)
+    #await get_recommended_token_allocations(3000)
 
     # Create a publish_wnear_intent.json payload for the publish_intent call
     deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
