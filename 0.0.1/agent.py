@@ -60,10 +60,11 @@ class Agent:
         # A system message guides an agent to solve specific tasks.
         prompt = {
             "role": "system",
+            # disallow some builtin tools from the library
             "content": """
 You are Divvy, a financial assistant that helps users manage and grow their crypto portfolio.
-You have access NEAR account details of a user (such as the balance and id).
-You can fetch the current market prices of crypto tokens in a user's wallet.
+You can access NEAR account details of the user (their balance and account id).
+You can provide the real-time current market prices of crypto tokens in the users wallet.
 You can allow the user to set growth and allowance goals on their portfolio.
 
 Your capabilities are defined and facilitated by the tools you have access to except your disallowed tools.
@@ -144,26 +145,36 @@ You must follow the following instructions:
         return responses
 
     def get_near_account_balance(self) -> typing.List[typing.Dict]:
-        """Get the NEAR account balance of the user"""
+        """Get the balance of the user's NEAR account"""
         tool_name = self._get_tool_name()
-        balance = get_near_account_balance(self.near_account_id)
-        return [self._to_function_response(tool_name, balance)]
+        responses = []
+        balance = None
+        if self.near_account_id:
+            balance = get_near_account_balance(self.near_account_id)
+            self.env.add_reply("Found the user's balance", message_type="system")
+        else:
+            self.env.add_reply(
+                "We couldn't fetch a balance because no NEAR account ID is set. Prompt the user to provide their account ID so we are can fetch theire balance.",
+                message_type="system",
+            )
+        responses.append(self._to_function_response(tool_name, balance))
+        return responses
 
     # IMPROVE: this function can be parameterized to only query prices for tokens user specifies and fetch all if there's no param value
     def fetch_token_prices(self):
-        """Fetch the current market prices of the tokens in a user's wallet (e.g. NEAR, BTC, ETH, SOL)"""
+        """Fetch the real-time market prices of the tokens in a user's wallet (e.g. NEAR, BTC, ETH, SOL)"""
         tool_name = self._get_tool_name()
-        balance = get_near_account_balance(self.near_account_id)
-        if balance:
-            if len(balance) > 23:
-                length = len(balance)
-                chars_remaining = length - 23
-                # TODO improve the yocoto to Near conversion
-                self.near_account_balance = float(
-                    str(balance[0 : chars_remaining - 1])
-                    + "."
-                    + "".join(balance[chars_remaining - 1 : length])
-                )
+        # balance = get_near_account_balance(self.near_account_id)
+        # if balance:
+        #     if len(balance) > 23:
+        #         length = len(balance)
+        #         chars_remaining = length - 23
+        #         # TODO improve the yocoto to Near conversion
+        #         self.near_account_balance = float(
+        #             str(balance[0 : chars_remaining - 1])
+        #             + "."
+        #             + "".join(balance[chars_remaining - 1 : length])
+        #         )
 
         self.env.add_reply(
             "Fetching the current prices of the tokens in your wallet..."
