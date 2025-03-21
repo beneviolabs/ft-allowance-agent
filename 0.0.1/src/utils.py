@@ -275,7 +275,6 @@ class Quote(TypedDict):
 #    public_key = 'ed25519:' + \
 #        base58.b58encode(account.signer.public_key).decode('utf-8')s
 
-
 def publish_intent(signed_intent):
     """Publishes the signed intent to the solver bus."""
     try:
@@ -311,7 +310,7 @@ async def main():
     print("best quote", best_quote)
 
 
-    #await get_recommended_token_allocations(3000)
+    await get_recommended_token_allocations(3000)
 
     # Create a publish_wnear_intent.json payload for the publish_intent call
     deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
