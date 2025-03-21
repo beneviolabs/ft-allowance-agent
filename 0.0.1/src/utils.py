@@ -326,7 +326,7 @@ def sign_quote(quote: dict) -> Commitment:
         base58.b58encode(account.signer.sign(
             quote_str.encode('utf-8'))).decode('utf-8')
     public_key = 'ed25519:' + \
-        base58.b58encode(account.signer.public_key).deode('utf-8')
+        base58.b58encode(account.signer.public_key).decode('utf-8')
 
     # Ensure the signature is valid, else raise an exception
     try:
@@ -382,7 +382,7 @@ async def main():
     # Deposit the required Near to intents.near to be able to execute the swap
     #await deposit_near(near_to_swap)
 
-    #await get_recommended_token_allocations(3000)
+    await get_recommended_token_allocations(3000)
 
     # Create a publish_wnear_intent.json payload for the publish_intent call
     deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
@@ -416,7 +416,7 @@ async def main():
     signed_intent = PublishIntent(signed_data=signed_quote, quote_hashes=[
                                   best_quote.get("quote_hash")])
 
-    print(publish_intent(signed_intent))
+    #print(publish_intent(signed_intent))
 
 
-asyncio.run(main())
+#asyncio.run(main())
