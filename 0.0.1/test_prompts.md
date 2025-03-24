@@ -72,6 +72,19 @@ Format:
     -> set my goal to 200
     <- I'm happy to help you set a goal for your portfolio! However, I need to clarify what type of goal you would like to set. Would you like to set a growth goal or an allowance goal?
 
+    #### Or
+
+    -> I'd like to have a growth goal of 5000 and allowance of 300
+
+    Assistant: Saved your growth goal: 5000
+
+    -> what are my goals?
+
+    <- Assistant: It seems I made a mistake earlier. You had set an allowance goal of 300. Here are your current goals:
+
+        * Growth goal: 5000
+        * Allowance goal: 300
+
 
 ## 3. Account Balance
 
