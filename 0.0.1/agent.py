@@ -247,7 +247,7 @@ You must follow the following instructions:
         return results
 
     def recommend_token_allocations_to_swap_for_stablecoins(self) -> typing.List[typing.Dict]:
-        """Given a input of a target USD amount, recommend swaps of tokens and quantities of each to swap for USDT stablecoins or USDC stablecoins"""
+        """Recommend the types of tokens and quantities of each to swap for USDT stablecoins or USDC stablecoins to realize the user's target allowance goal"""
 
         tool_name = self._get_tool_name()
 
