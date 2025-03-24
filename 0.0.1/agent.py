@@ -151,6 +151,16 @@ You must follow the following instructions:
         balance = None
         if self.near_account_id:
             balance = get_near_account_balance(self.near_account_id)
+            if balance:
+                if len(balance) > 23:
+                    length = len(balance)
+                    chars_remaining = length - 23
+                    # TODO improve the yocoto to Near conversion
+                    self.near_account_balance = float(
+                        str(balance[0 : chars_remaining - 1])
+                        + "."
+                        + "".join(balance[chars_remaining - 1 : length])
+                    )
             self.env.add_reply("Found the user's balance", message_type="system")
         else:
             self.env.add_reply(
@@ -164,17 +174,7 @@ You must follow the following instructions:
     def fetch_token_prices(self):
         """Fetch the real-time market prices of the tokens in a user's wallet (e.g. NEAR, BTC, ETH, SOL)"""
         tool_name = self._get_tool_name()
-        # balance = get_near_account_balance(self.near_account_id)
-        # if balance:
-        #     if len(balance) > 23:
-        #         length = len(balance)
-        #         chars_remaining = length - 23
-        #         # TODO improve the yocoto to Near conversion
-        #         self.near_account_balance = float(
-        #             str(balance[0 : chars_remaining - 1])
-        #             + "."
-        #             + "".join(balance[chars_remaining - 1 : length])
-        #         )
+
 
         self.env.add_reply(
             "Fetching the current prices of the tokens in your wallet..."
@@ -246,8 +246,11 @@ You must follow the following instructions:
             results.extend(tool(**args))
         return results
 
-    def recommend_token_allocations_to_swap_for_stablecoins(self):
-        """Given a input of a target USD amount, recommend the tokens and quantities of each to swap for USDT stablecoins or USDC stablecoins"""
+    def recommend_token_allocations_to_swap_for_stablecoins(self) -> typing.List[typing.Dict]:
+        """Given a input of a target USD amount, recommend swaps of tokens and quantities of each to swap for USDT stablecoins or USDC stablecoins"""
+
+        tool_name = self._get_tool_name()
+
         if not self.recommended_tokens:
             self.env.add_reply(
                 f"Considering your options with a preference for holding BTC..."
@@ -259,7 +262,7 @@ You must follow the following instructions:
         self.env.add_reply(
             f"We can sell this quantity of your tokens to realize your target USD in stablecoin..."
         )
-        return str(self.recommended_tokens) if self.recommended_tokens else ""
+        return [self._to_function_response(tool_name, self.recommended_tokens or [])]
 
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
         """Save the Near account ID the user provides"""
