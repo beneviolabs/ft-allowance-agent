@@ -1,6 +1,7 @@
 **/.vscode/
 **/bin/
 **/.env
+**/.venv
 **/lib/
 **/target/
 .DS_Store
