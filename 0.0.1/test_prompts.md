@@ -78,12 +78,12 @@ Format:
 ### 3.1 Get account balance when near account ID not set
 >
     -> what's my balance?
-    <- Your current balance on ptke.near is 0 NEAR.
+    <- I'm happy to help you with your account balance. Unfortunately, I don't have your NEAR account ID on file. Can you please provide it to me so I can look up your balance?
 
 ### 3.2 Get account balance when near account ID set
 >
     -> what's my account balance
-    <- I'm happy to help you with your account balance. Unfortunately, I don't have your NEAR account ID on file. Can you please provide it to me so I can look up your balance?
+    <- Your current balance on ptke.near is 3.14 NEAR.
 
 ### 3.3 Get account balance when near account ID set but no balance
 >

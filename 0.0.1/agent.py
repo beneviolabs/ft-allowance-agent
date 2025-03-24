@@ -154,7 +154,7 @@ You must follow the following instructions:
             self.env.add_reply("Found the user's balance", message_type="system")
         else:
             self.env.add_reply(
-                "We couldn't fetch a balance because no NEAR account ID is set. Prompt the user to provide their account ID so we are can fetch theire balance.",
+                "We couldn't fetch a balance because no NEAR account ID is set. Prompt the user to provide their account ID so we are can fetch their balance.",
                 message_type="system",
             )
         responses.append(self._to_function_response(tool_name, balance))
