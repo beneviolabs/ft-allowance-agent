@@ -34,8 +34,8 @@ pub trait ExtSelf {
 }
 
 
-const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(50);
-const BASE_GAS: Gas = Gas::from_tgas(5);  // Base gas for contract execution
+const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
+const BASE_GAS: Gas = Gas::from_tgas(10);  // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
@@ -265,6 +265,12 @@ impl ProxyContract {
         // Deserialize transaction
         let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
                 .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
+
+        // Log signature in hex format
+        near_sdk::env::log_str(&format!("Signature in hex: {:?}", hex::encode(&signature_bytes)));
+
+        // Log signature in base58 format
+        near_sdk::env::log_str(&format!("Signature in base58: {}", bs58::encode(&signature_bytes).into_string()));
 
         // Add signature to transaction
         let near_tx_signed = near_tx.build_with_signature(omni_signature);
