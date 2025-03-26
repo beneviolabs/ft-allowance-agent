@@ -29,7 +29,7 @@ class Agent:
         self.near_account_balance = None
         tool_registry = self.env.get_tool_registry()
         tool_registry.register_tool(
-            self.recommend_token_allocations_to_swap_for_stablecoins
+            self.recommend_token_swaps
         )
         tool_registry.register_tool(self.get_near_account_id)
         tool_registry.register_tool(self.save_near_account_id)
@@ -45,15 +45,21 @@ class Agent:
         return self._near_account_id
 
     @property
-    def allowance_goal(self) -> str | None:
-        if not self._allowance_goal:
-            self._allowance_goal = self.env.read_file("allowance_goal.txt")
+    def allowance_goal(self) -> int | None:
+        if self._allowance_goal is None:
+            stored_goal = self.env.read_file("allowance_goal.txt")
+            self.env.add_system_log(f"Found stored allowance goal: {stored_goal}", logging.DEBUG)
+            if stored_goal:
+                self._allowance_goal = int(stored_goal)
         return self._allowance_goal
 
     @property
-    def growth_goal(self) -> str | None:
-        if not self._growth_goal:
-            self._growth_goal = self.env.read_file("growth_goal.txt")
+    def growth_goal(self) -> int | None:
+        if self._growth_goal is None:
+            stored_goal = self.env.read_file("growth_goal.txt")
+            self.env.add_system_log(f"Found stored growth goal: {stored_goal}", logging.DEBUG)
+            if stored_goal:
+                self._growth_goal = int(stored_goal)
         return self._growth_goal
 
     def run(self):
@@ -246,10 +252,47 @@ You must follow the following instructions:
             results.extend(tool(**args))
         return results
 
-    def recommend_token_allocations_to_swap_for_stablecoins(self) -> typing.List[typing.Dict]:
-        """Recommend the types of tokens and quantities of each to swap for USDT stablecoins or USDC stablecoins to realize the user's target allowance goal"""
+    def recommend_token_swaps(self) -> typing.List[typing.Dict]:
+        """
+            Generate token swap recommendations to achieve the user's allowance goal in stablecoins.
+
+            This function should be called when:
+            1. The user has set an allowance goal
+            2. The user requests advice on which tokens to swap
+
+            The function will:
+            1. Consider the user's portfolio composition
+            2. Prioritize maximizing BTC holdings
+            3. Recommend optimal token quantities to swap into USDC/USDT
+            4. Preserve long-term growth potential while meeting allowance needs
+
+            Returns:
+                List[Dict]: A list containing a single function response with recommended swaps:
+                [{
+                    'token': str,           # Token symbol (e.g., 'NEAR', 'SOL')
+                    'amount': float,        # Amount of tokens to swap
+                }]
+
+            Example response:
+                [{'role': 'function',
+                'name': 'recommend_token_swaps',
+                'content': '{'NEAR': 99.04298327119977, 'SOL': 1.0781411622775472, 'ETH': 0.07348127071321557, 'BTC': 0.02280692838780696}'
+                }]
+        """
 
         tool_name = self._get_tool_name()
+
+        # Log allowance goals
+        self.env.add_system_log(
+            f"Current allowance goal: {self.allowance_goal}",
+            logging.DEBUG
+        )
+
+        if self.allowance_goal is None:
+            goals = self.get_goals()[0]
+            goals_dict = json.loads(goals["content"])
+            if goals_dict["allowance"]:
+                self.save_goal(int(goals_dict["allowance"]), "allowance")
 
         if not self.recommended_tokens:
             self.env.add_reply(
@@ -259,9 +302,11 @@ You must follow the following instructions:
                 int(self.allowance_goal)
             )
 
-        self.env.add_reply(
-            f"We can sell this quantity of your tokens to realize your target USD in stablecoin..."
-        )
+        if self.recommended_tokens:
+            self.env.add_system_log(
+                f"Recommended token swaps: {json.dumps(self.recommended_tokens)}",
+                logging.DEBUG
+            )
         return [self._to_function_response(tool_name, self.recommended_tokens or [])]
 
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
@@ -279,9 +324,34 @@ You must follow the following instructions:
         return responses
 
     def save_goal(self, goal: int, type_: DivvyGoalType) -> typing.List[typing.Dict]:
-        """Save the growth or allowance goal the user provides.
-        If they don't specify which goal type, ask them to disambiguate.
-        """
+        """Save a portfolio goal (growth or allowance) specified by the user.
+
+        This function should be called when:
+        1. User expresses a desire to set either or both portfolio goals
+        2. Goal amounts and types can be clearly identified from user's input
+        3. Multiple goals should trigger multiple calls to this function
+
+        Examples of valid user inputs:
+        - "I want an allowance goal of 300"
+        - "Set my growth goal to 5000"
+        - "I'd like to have a growth goal of 5000 and allowance of 300"
+            ^ This should trigger two separate calls:
+            1. save_goal(5000, "growth")
+            2. save_goal(300, "allowance")
+
+        Args:
+            goal (int): The numerical value of the goal in USD
+            type_ (DivvyGoalType): Either "growth" or "allowance"
+
+        Returns:
+            List[Dict]: Function response confirming goal was saved
+
+        Note:
+        - Both growth and allowance goals can coexist
+        - Goals must be positive integers
+        - Invalid inputs will prompt user for clarification
+        - When multiple goals are provided, process each separately
+    """
         responses = []
         if type_ in DIVVY_GOALS and goal > 0:
             self._persist_goal(goal, type_)
@@ -299,12 +369,16 @@ You must follow the following instructions:
         self.env.write_file("near_id.txt", near_id)
         self._near_account_id = near_id
 
-    def _persist_goal(self, goal: int, type_: DivvyGoalType) -> int:
+    def _persist_goal(self, goal: int, type_: DivvyGoalType) -> None:
         """Persist the growth or allowance goal to storage and set it to the class instance variable"""
         self.env.write_file(f"{type_}_goal.txt", str(goal))
         if type_ == "allowance":
+            self.env.add_system_log(
+                f"Persisted {type_} goal: {goal}",
+                logging.DEBUG
+            )
             self._allowance_goal = goal
-        if type == "growth":
+        if type_ == "growth":
             self._growth_goal = goal
 
 
