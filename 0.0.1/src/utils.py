@@ -3,18 +3,10 @@ from typing import Union
 import json
 import requests
 from typing import NewType
-from py_near.account import Account
-import os
 import base64
-import base58
-
-import near_api
-from cryptography.hazmat.primitives.asymmetric import ed25519
 
 import secrets
 from typing import List, Tuple, Dict, Union, TypedDict, Union
-from py_near.transactions import create_function_call_action
-from dotenv import load_dotenv
 
 from datetime import datetime, timedelta, timezone
 
@@ -38,16 +30,6 @@ ASSET_MAP = {
         'token_id': 'wrap.near',
         'decimals': 24,
     }}
-
-load_dotenv()
-AccountId = os.getenv("ACCOUNT_ID")
-PrivKey = os.getenv("FA_PRIV_KEY")
-PubKey = os.getenv("FA_PUB_KEY")
-
-if AccountId is None or PrivKey is None or PubKey is None:
-    raise EnvironmentError(
-        "ACCOUNT_ID and FA_PRIV_KEY must be set in environment variables")
-acc = Account(AccountId, PrivKey)
 
 
 # TODO refactor to make use of ASSET_MAP
@@ -255,36 +237,11 @@ def get_recommended_token_allocations(target_usd_amount: float):
         print(f"Error fetching allocations: {e}")
         return None
 
-async def deposit_near(deposit_amount: int = ONE_NEAR):
-    deposit_action = create_function_call_action(
-        method_name="near_deposit",
-        args=json.dumps(
-            {}).encode("utf8"),
-        gas=DEFAULT_ATTACHED_GAS,
-        deposit=deposit_amount)
-
-    transfer_action = create_function_call_action(
-        method_name="ft_transfer_call",
-        args=json.dumps(
-            {
-                "receiver_id": "intents.near",
-                "amount": str(deposit_amount),
-                "msg": ""}).encode("utf8"),
-        gas=DEFAULT_ATTACHED_GAS,
-        deposit=1)
-
-    noWait = False
-    tr = await acc.sign_and_submit_tx("wrap.near", [deposit_action, transfer_action], noWait)
-    print(tr.logs)
-
-    return tr
-
 
 class AcceptQuote(TypedDict):
     nonce: str
     recipient: str
     message: str
-
 
 class Commitment(TypedDict):
     standard: str
@@ -292,16 +249,13 @@ class Commitment(TypedDict):
     signature: str
     public_key: str
 
-
 class PublishIntent(TypedDict):
     signed_data: Commitment
     quote_hashes: List[str] = []
 
-
 class Intent(TypedDict):
     intent: str
     diff: Dict[str, str]
-
 
 class Quote(TypedDict):
     nonce: str
@@ -311,39 +265,15 @@ class Quote(TypedDict):
     intents: List[Intent]
 
 
-def get_account():
-    near_provider = near_api.providers.JsonProvider(
-        'https://rpc.mainnet.near.org')
-    key_pair = near_api.signer.KeyPair(PrivKey)
-    signer = near_api.signer.Signer(AccountId, key_pair)
-    return near_api.account.Account(near_provider, signer, AccountId)
-
-
-def sign_quote(quote: dict) -> Commitment:
-    quote_str = json.dumps(quote)
-    account = get_account()
-    signature = 'ed25519:' + \
-        base58.b58encode(account.signer.sign(
-            quote_str.encode('utf-8'))).decode('utf-8')
-    public_key = 'ed25519:' + \
-        base58.b58encode(account.signer.public_key).decode('utf-8')
-
-    # Ensure the signature is valid, else raise an exception
-    try:
-        check_pub_key = ed25519.Ed25519PublicKey.from_public_bytes(
-            account.signer.public_key)
-        check_pub_key.verify(base58.b58decode(
-            signature[8:]), json.dumps(quote).encode('utf-8'))
-        print("Signature is valid.")
-    except ed25519.InvalidSignature:
-        print("Invalid signature.")
-
-    return Commitment(
-        standard="raw_ed25519",
-        payload=quote_str,
-        signature=signature,
-        public_key=public_key)
-
+# TODO replace this with a MPC call to sign an intent payload
+#def sign_quote(quote: dict) -> Commitment:
+#    quote_str = json.dumps(quote)
+#    account = get_account()
+#    signature = 'ed25519:' + \
+#        base58.b58encode(account.signer.sign(
+#            quote_str.encode('utf-8'))).decode('utf-8')
+#    public_key = 'ed25519:' + \
+#        base58.b58encode(account.signer.public_key).decode('utf-8')s
 
 def publish_intent(signed_intent):
     """Publishes the signed intent to the solver bus."""
@@ -379,8 +309,6 @@ async def main():
     best_quote = get_usdc_quotes({"nep141:wrap.near": near_to_swap})[0][1]
     print("best quote", best_quote)
 
-    # Deposit the required Near to intents.near to be able to execute the swap
-    #await deposit_near(near_to_swap)
 
     await get_recommended_token_allocations(3000)
 
@@ -397,24 +325,26 @@ async def main():
     amount_out_less_fee = str(
         int(best_quote.get("amount_out")) - int(referral_fee_amount))
 
-    # This is how you swap with a 1% fee to benevio-labs.near
-    payload = Quote(signer_id=AccountId,
-                    nonce=nonce_base64,
-                    verifying_contract="intents.near",
-                    deadline=deadline,
-                    intents=[{"intent": "token_diff",
-                              "diff": {best_quote.get("token_in"): "-" + str(best_quote.get("amount_in")),
-                                       best_quote.get("token_out"): amount_out_less_fee},
-                              "referral": "benevio-labs.near"},
-                             {"intent": "transfer",
-                              "receiver_id": "benevio-labs.near",
-                              "tokens": {best_quote.get("token_out"): referral_fee_amount,
-                                         },
-                              "memo": "referral_fee"}])
+    # TODO replace this with a MPC call to sign an intent payload
 
-    signed_quote = sign_quote(payload)
-    signed_intent = PublishIntent(signed_data=signed_quote, quote_hashes=[
-                                  best_quote.get("quote_hash")])
+    # This is how you swap with a 1% fee to benevio-labs.near
+    #payload = Quote(signer_id=AccountId,
+    #                nonce=nonce_base64,
+    #                verifying_contract="intents.near",
+    #                deadline=deadline,
+    #                intents=[{"intent": "token_diff",
+    #                          "diff": {best_quote.get("token_in"): "-" + str(best_quote.get("amount_in")),
+    #                                   best_quote.get("token_out"): amount_out_less_fee},
+    #                          "referral": "benevio-labs.near"},
+    #                         {"intent": "transfer",
+    #                          "receiver_id": "benevio-labs.near",
+    #                          "tokens": {best_quote.get("token_out"): referral_fee_amount,
+    #                                     },
+    #                          "memo": "referral_fee"}])
+    #
+    #signed_quote = sign_quote(payload)
+    #signed_intent = PublishIntent(signed_data=signed_quote, quote_hashes=[
+    #                              best_quote.get("quote_hash")])
 
     #print(publish_intent(signed_intent))
 
