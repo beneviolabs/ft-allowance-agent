@@ -4,17 +4,43 @@ import json
 import requests
 from typing import NewType
 import base64
+from decimal import Decimal
 
+import os
 import secrets
 from typing import List, Tuple, Dict, Union, TypedDict, Union
 
 from datetime import datetime, timedelta, timezone
+
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        #logging.FileHandler('mpc_client.log'),
+        logging.StreamHandler()
+    ]
+)
+
+from client import NearMpcClient
 
 BASE_URL = "https://solver-relay-v2.chaindefuser.com/rpc"
 TGAS = 1_000_000_000_000
 DEFAULT_ATTACHED_GAS = 100 * TGAS
 ONE_NEAR = 1_000_000_000_000_000_000_000_000
 
+
+def yocto_to_near(amount: str) -> float:
+    """Convert yoctoNEAR string to NEAR float"""
+    return float(Decimal(amount) / ONE_NEAR)
+
+def near_to_yocto(amount: float) -> str:
+    """Convert NEAR amount to yoctoNEAR string"""
+    return str(int(Decimal(str(amount)) * ONE_NEAR))
+
+def format_token_amount(amount: float, decimals: int) -> str:
+    """Format token amount with proper decimals"""
+    return str(int(Decimal(str(amount)) * Decimal(str(10**decimals))))
 
 ASSET_MAP = {
     'USDC': {
@@ -94,13 +120,12 @@ def get_near_account_balance(account_id: str) -> float:
     Returns:
         float: Account balance in yoctoNEAR
     """
-    print(f"fetching account balance for {account_id}")
     response = requests.post(
         "https://rpc.mainnet.fastnear.com",
         headers={"Content-Type": "application/json"},
         json={
             "jsonrpc": "2.0",
-            "id": "fastnear",
+            "id": "benevio.dev",
             "method": "query",
             "params": {
                 "request_type": "view_account",
@@ -109,7 +134,6 @@ def get_near_account_balance(account_id: str) -> float:
             }
         }
     )
-    print(response.json())
     return response.json()["result"]["amount"]
 
 def fetch_usd_price(url: str, parse_price: callable) -> Union[float, bool]:
@@ -186,7 +210,7 @@ def get_quotes(
                         "exact_amount_in": str(quantity),
                         "min_deadline_ms": 60000
                     }],
-                    "id": "dontcare",
+                    "id": "benevio.dev",
                     "jsonrpc": "2.0"
                 }
             )
@@ -196,7 +220,7 @@ def get_quotes(
                     for quote in data:
                         usd_value = int(quote.get("amount_out", 0))
                         quotes.append({
-                            "usd_value": usd_value,  # Assuming amount_out is in USD,
+                            "usd_value": usd_value,  # TODO assumes amount_out is in USD,
                             "token_in": quote.get("defuse_asset_identifier_in"),
                             "token_out": quote.get("defuse_asset_identifier_out"),
                             "amount_in": quote.get("amount_in"),
@@ -230,7 +254,8 @@ def get_recommended_token_allocations(target_usd_amount: float):
             })
         }
 
-        response = requests.get("https://ft-allowance-allocations.hello-d1f.workers.dev/", params=params)
+        swap_service_url = os.environ.get('swap_allocations_workder')
+        response = requests.get(swap_service_url, params=params)
         print(response.json())
         return response.json() if response.status_code == 200 else None
     except requests.RequestException as e:
@@ -279,7 +304,7 @@ def publish_intent(signed_intent):
     """Publishes the signed intent to the solver bus."""
     try:
         rpc_request = {
-            "id": "dontcare",
+            "id": "benevio.dev",
             "jsonrpc": "2.0",
             "method": "publish_intent",
             "params": [signed_intent]
@@ -306,24 +331,22 @@ async def main():
 
     # Get the best quotes for swapping some NEAR to USDT
     near_to_swap = 1 * ONE_NEAR
-    best_quote = get_usdc_quotes({"nep141:wrap.near": near_to_swap})[0][1]
-    print("best quote", best_quote)
-
-
-    await get_recommended_token_allocations(3000)
-
-    # Create a publish_wnear_intent.json payload for the publish_intent call
-    deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
-                ).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-
-    # Generate a random nonce
-    nonce_base64 = base64.b64encode(secrets.randbits(
-        256).to_bytes(32, byteorder='big')).decode('utf-8')
-
-    referral_fee_amount = str(
-        int(best_quote.get("amount_out")) // 100)  # 1% of amount_out
-    amount_out_less_fee = str(
-        int(best_quote.get("amount_out")) - int(referral_fee_amount))
+    #best_quote = get_usdc_quotes({"nep141:wrap.near": near_to_swap})[0][1]
+    #print("best quote", best_quote)
+#
+#
+    ## Create a publish_wnear_intent.json payload for the publish_intent call
+    #deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
+    #            ).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+#
+    ## Generate a random nonce
+    #nonce_base64 = base64.b64encode(secrets.randbits(
+    #    256).to_bytes(32, byteorder='big')).decode('utf-8')
+#
+    #referral_fee_amount = str(
+    #    int(best_quote.get("amount_out")) // 100)  # 1% of amount_out
+    #amount_out_less_fee = str(
+    #    int(best_quote.get("amount_out")) - int(referral_fee_amount))
 
     # TODO replace this with a MPC call to sign an intent payload
 
@@ -346,7 +369,18 @@ async def main():
     #signed_intent = PublishIntent(signed_data=signed_quote, quote_hashes=[
     #                              best_quote.get("quote_hash")])
 
+
+    # TODO test client methods
+    client = NearMpcClient(network="testnet")
+
+    client.derive_mpc_key("agent.charleslavon.testnet")
+
+
+
+    #result = agent.execute_swap(1000)  # Swap for 1000 USD worth
+    #print(f"Swap transaction: {result}")
+
     #print(publish_intent(signed_intent))
 
 
-#asyncio.run(main())
+asyncio.run(main())

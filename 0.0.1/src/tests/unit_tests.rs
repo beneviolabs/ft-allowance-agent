@@ -110,7 +110,6 @@ mod tests {
         expected = "danny is not allowed. Only wrap.near, wrap.testnet, and intents.near are permitted"
     )]
     fn test_disallowed_action() {
-        //TODO rewrite this as a workspace integration test
         let context = get_context(accounts(2));
         testing_env!(context.build());
         let mut contract = ProxyContract::new(accounts(1));

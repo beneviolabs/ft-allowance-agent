@@ -14,6 +14,11 @@
     "TokenToStablecoin"
   ],
   "details": {
+    "env_vars": {
+      "network": "mainnet",
+      "agent_account_id": "v0.benevio-labs.near",
+      "swap_allocations_workder": "https://ft-allowance-allocations.hello-d1f.workers.dev/"
+    },
     "agent": {
       "defaults": {
         "model": "llama-v3p1-70b-instruct",

@@ -29,7 +29,7 @@ NONCE=$(curl -s -X POST https://rpc.$NEAR_ENV.fastnear.com \
     -H 'Content-Type: application/json' \
     -d '{
         "jsonrpc": "2.0",
-        "id": "dontcare",
+        "id": "benevio.dev",
         "method": "query",
         "params": {
             "request_type": "view_access_key",

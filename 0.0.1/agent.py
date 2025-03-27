@@ -2,6 +2,8 @@ import logging
 import inspect
 import json
 import re
+from src.client import NearMpcClient
+from src.models import SignatureRequest, MpcKey, Intent
 import typing
 from nearai.agents.environment import Environment, ChatCompletionMessageToolCall
 from src.utils import (
@@ -9,13 +11,13 @@ from src.utils import (
     fetch_coingecko,
     get_recommended_token_allocations,
     get_near_account_balance,
+    yocto_to_near,
 )
 
 NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
 DIVVY_GOALS = set(["allowance", "growth"])
 DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
-
 
 class Agent:
 
@@ -27,6 +29,7 @@ class Agent:
         self._near_account_id = None
         self._growth_goal = None
         self.near_account_balance = None
+        self._client = NearMpcClient(network=env.env_vars["network"])
         tool_registry = self.env.get_tool_registry()
         tool_registry.register_tool(
             self.recommend_token_swaps
@@ -72,6 +75,9 @@ You are Divvy, a financial assistant that helps users manage and grow their cryp
 You can access NEAR account details of the user (their balance and account id).
 You can provide the real-time current market prices of crypto tokens in the users wallet.
 You can allow the user to set growth and allowance goals on their portfolio.
+You are capabile of recommending token swaps to achieve the user's allowance goal in stablecoins.
+You can also execute the token swaps to realize the desired allowance goal.
+You can also fetch the NEAR account balance of the user.
 
 Your capabilities are defined and facilitated by the tools you have access to except your disallowed tools.
 
@@ -151,26 +157,44 @@ You must follow the following instructions:
         return responses
 
     def get_near_account_balance(self) -> typing.List[typing.Dict]:
-        """Get the balance of the user's NEAR account"""
+        """
+        Fetch and return the NEAR token balance for a user's account.
+
+        This function should be called when:
+        1. The user asks about their NEAR balance
+        2. When the user asks questions like:
+        - "What's my NEAR balance?"
+        - "How much NEAR do I have?"
+
+        Requirements:
+        - A valid NEAR account ID must be set (self.near_account_id)
+        - If no account ID is set, this will prompt the user to provide one
+
+        Returns:
+            List[Dict]: A function response containing the balance:
+            [{
+                'role': 'function',
+                'name': 'get_near_account_balance',
+                'content': '1000000000000000000000000'  # Balance in yoctoNEAR
+            }]
+
+        Side effects:
+        - Sets self.near_account_balance with the human-readable NEAR amount
+        - Adds system messages to guide the conversation flow
+        - Prompts for account ID if missing
+        """
+
         tool_name = self._get_tool_name()
         responses = []
         balance = None
         if self.near_account_id:
             balance = get_near_account_balance(self.near_account_id)
             if balance:
-                if len(balance) > 23:
-                    length = len(balance)
-                    chars_remaining = length - 23
-                    # TODO improve the yocoto to Near conversion
-                    self.near_account_balance = float(
-                        str(balance[0 : chars_remaining - 1])
-                        + "."
-                        + "".join(balance[chars_remaining - 1 : length])
-                    )
+                self.near_account_balance = yocto_to_near(float(balance))
             self.env.add_reply("Found the user's balance", message_type="system")
         else:
             self.env.add_reply(
-                "We couldn't fetch a balance because no NEAR account ID is set. Prompt the user to provide their account ID so we are can fetch their balance.",
+                "We couldn't fetch a balance because no NEAR account ID is set. What is your near account ID?",
                 message_type="system",
             )
         responses.append(self._to_function_response(tool_name, balance))
@@ -309,6 +333,7 @@ You must follow the following instructions:
             )
         return [self._to_function_response(tool_name, self.recommended_tokens or [])]
 
+
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
         """Save the Near account ID the user provides"""
         responses = []
@@ -382,7 +407,56 @@ You must follow the following instructions:
             self._growth_goal = goal
 
 
-if globals().get("env", None):
-    env = globals().get("env", {})
-    agent = Agent(env)
+    def execute_swap(self):
+        """Execute a swap to realize the desired allowance goal"""
+        # Ensure we have account ID
+        if not self.near_account_id:
+            self.find_near_account_id()
+
+        # Ensure we have an allowance goal
+        if not self.allowance_goal:
+            self.get_allowance_goal()
+
+        # Ensure we have recommended tokens
+        if not self.recommended_tokens:
+            self.env.add_system_log(
+                f"Recommended tokens not found. Fetching swap options now...",
+                logging.DEBUG
+            )
+            self.recommend_token_allocations_to_swap_for_stablecoins()
+
+        # Get quotes for both USDC and USDT
+        usdc_quotes = get_usdc_quotes(self.recommended_tokens)
+        usdt_quotes = get_usdt_quotes(self.recommended_tokens)
+
+        # Choose the highest value
+        if usdc_quotes.usd_value > usdt_quotes.usd_value:
+            best_quote = usdc_quotes
+        else:
+            best_quote = usdt_quotes
+
+        # TODO create an intent payload with best_quote
+
+        #intent = self._client.create_intent(
+        #    signer_id=self.near_account_id,
+        #    token_diffs=self.get_token_diffs(self.allowance_goal)
+        #)
+
+        # TODO requst a signature for teh intent
+
+        #return self._client.request_signature(
+        #    SignatureRequest(
+        #        contract_id="intents.near",
+        #        method_name="sign_intent",
+        #        args=json.dumps(intent.dict())
+        #    )
+        #)
+
+        # TODO publish the intent with the MPC signature
+
+        # what should be our return value?
+
+if globals().get('env', None):
+    agent = Agent(globals().get('env', {}))
     agent.run()
+
