@@ -1,9 +1,11 @@
 import asyncio
+from asyncio.log import logger
 from typing import Union
 import json
 import requests
 from typing import NewType
 import base64
+import aiohttp
 from decimal import Decimal
 
 import os
@@ -12,22 +14,36 @@ from typing import List, Tuple, Dict, Union, TypedDict, Union
 
 from datetime import datetime, timedelta, timezone
 
-import logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        #logging.FileHandler('mpc_client.log'),
-        logging.StreamHandler()
-    ]
-)
 
-from client import NearMpcClient
+#from src.models import SignatureRequest
+#from src.client import NearMpcClient
 
 BASE_URL = "https://solver-relay-v2.chaindefuser.com/rpc"
 TGAS = 1_000_000_000_000
 DEFAULT_ATTACHED_GAS = 100 * TGAS
 ONE_NEAR = 1_000_000_000_000_000_000_000_000
+
+
+from py_near.account import Account
+from dotenv import load_dotenv
+import near_api
+import base58
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
+load_dotenv()
+#AccountId = os.getenv("ACCOUNT_ID")
+#PrivKey = os.getenv("FA_PRIV_KEY")
+#if AccountId is None or PrivKey is None:
+#    raise EnvironmentError(
+#        "ACCOUNT_ID and FA_PRIV_KEY must be set in environment variables")
+#acc = Account(AccountId, PrivKey)
+
+def get_account():
+     near_provider = near_api.providers.JsonProvider(
+         'https://rpc.mainnet.near.org')
+     key_pair = near_api.signer.KeyPair(PrivKey)
+     signer = near_api.signer.Signer(AccountId, key_pair)
+     return near_api.account.Account(near_provider, signer, AccountId)
 
 
 def yocto_to_near(amount: str) -> float:
@@ -104,10 +120,17 @@ def get_usdc_quotes(token_to_quantities: TokenMap) -> list:
                 token_to_quantities[token_in]], get_usdc_token_out_type(token_in)), token_to_quantities.keys()))
 
 
-def get_usdt_quotes(token_to_quantities: TokenMap) -> list:
-    # map to get quotes for each token_out_id
-    return list(map(lambda token_in: get_quotes([token_in], [
-                token_to_quantities[token_in]], get_usdt_token_out_type(token_in)), token_to_quantities.keys()))
+async def get_usdt_quotes(token_to_quantities: TokenMap) -> list:
+    # Create a list of coroutines - each one is a call to get_quotes()
+    coroutines = [
+        get_quotes(
+            [token_in],
+            [token_to_quantities[token_in]],
+            get_usdt_token_out_type(token_in)
+        )
+        for token_in in token_to_quantities.keys()
+    ]
+    return await asyncio.gather(*coroutines)
 
 
 def get_near_account_balance(account_id: str) -> float:
@@ -189,55 +212,57 @@ def fetch_coingecko(token: str) -> Union[float, bool]:
     print(f'calling to fetch from  {url}')
     return fetch_usd_price(url, lambda o: float(o[token]['usd']))
 
-def get_quotes(
+async def get_quotes(
         token_in_ids: list[str],
         token_quantities: list[str],
         asset_identifier_out: str) -> QuoteTuples:
     quotes = []
     best_usd_value = {"usd_value": 0}
 
-    for token_id, quantity in zip(token_in_ids, token_quantities):
-        print(
-            f"looping through token_in:{token_id}, {quantity} token out {asset_identifier_out}")
-        try:
-            response = requests.post(
-                f"{BASE_URL}",
-                json={
-                    "method": "quote",
-                    "params": [{
-                        "defuse_asset_identifier_in": token_id,
-                        "defuse_asset_identifier_out": asset_identifier_out,
-                        "exact_amount_in": str(quantity),
-                        "min_deadline_ms": 60000
-                    }],
-                    "id": "benevio.dev",
-                    "jsonrpc": "2.0"
-                }
-            )
-            if response.status_code == 200:
-                data = response.json().get("result", {})
-                if isinstance(data, list):
-                    for quote in data:
-                        usd_value = int(quote.get("amount_out", 0))
-                        quotes.append({
-                            "usd_value": usd_value,  # TODO assumes amount_out is in USD,
-                            "token_in": quote.get("defuse_asset_identifier_in"),
-                            "token_out": quote.get("defuse_asset_identifier_out"),
-                            "amount_in": quote.get("amount_in"),
-                            "amount_out": quote.get("amount_out"),
-                            "expiration_time": quote.get("expiration_time")
-                        })
-                        if usd_value > best_usd_value.get("usd_value"):
-                            best_usd_value = {
-                                "quote_hash": quote.get("quote_hash"),
-                                "amount_in": quote.get("amount_in"),
-                                "token_in": quote.get("defuse_asset_identifier_in"),
-                                "token_out": quote.get("defuse_asset_identifier_out"),
-                                "amount_out": quote.get("amount_out"),
-                                "usd_value": usd_value,
-                                "expiration_time": quote.get("expiration_time")}
-        except requests.RequestException as e:
-            print(f"Error fetching quote for token {token_id}: {e}")
+    async with aiohttp.ClientSession() as session:
+        for token_id, quantity in zip(token_in_ids, token_quantities):
+            print(f"Getting quote for token_in:{token_id}, {quantity} token out {asset_identifier_out}")
+            try:
+                async with session.post(
+                    BASE_URL,
+                    json={
+                        "method": "quote",
+                        "params": [{
+                            "defuse_asset_identifier_in": token_id,
+                            "defuse_asset_identifier_out": asset_identifier_out,
+                            "exact_amount_in": str(quantity),
+                            "min_deadline_ms": 60000
+                        }],
+                        "id": "benevio.dev",
+                        "jsonrpc": "2.0"
+                    }
+                ) as response:
+                    print(f"Response: {response}")
+                    if response.status == 200:
+                        data = await response.json()
+                        result = data.get("result", {})
+                        if isinstance(result, list):
+                            for quote in result:
+                                usd_value = int(quote.get("amount_out", 0))
+                                quotes.append({
+                                    "usd_value": usd_value,  # TODO assumes amount_out is in USD,
+                                    "token_in": quote.get("defuse_asset_identifier_in"),
+                                    "token_out": quote.get("defuse_asset_identifier_out"),
+                                    "amount_in": quote.get("amount_in"),
+                                    "amount_out": quote.get("amount_out"),
+                                    "expiration_time": quote.get("expiration_time")
+                                })
+                                if usd_value > best_usd_value.get("usd_value"):
+                                    best_usd_value = {
+                                        "quote_hash": quote.get("quote_hash"),
+                                        "amount_in": quote.get("amount_in"),
+                                        "token_in": quote.get("defuse_asset_identifier_in"),
+                                        "token_out": quote.get("defuse_asset_identifier_out"),
+                                        "amount_out": quote.get("amount_out"),
+                                        "usd_value": usd_value,
+                                        "expiration_time": quote.get("expiration_time")}
+            except Exception as e:
+                print(f"Error fetching quote for token {token_id}: {e}")
 
     return quotes, best_usd_value
 
@@ -254,7 +279,7 @@ def get_recommended_token_allocations(target_usd_amount: float):
             })
         }
 
-        swap_service_url = os.environ.get('swap_allocations_workder')
+        swap_service_url = os.environ.get('swap_allocations_worker')
         response = requests.get(swap_service_url, params=params)
         print(response.json())
         return response.json() if response.status_code == 200 else None
@@ -290,17 +315,33 @@ class Quote(TypedDict):
     intents: List[Intent]
 
 
-# TODO replace this with a MPC call to sign an intent payload
-#def sign_quote(quote: dict) -> Commitment:
-#    quote_str = json.dumps(quote)
-#    account = get_account()
-#    signature = 'ed25519:' + \
-#        base58.b58encode(account.signer.sign(
-#            quote_str.encode('utf-8'))).decode('utf-8')
-#    public_key = 'ed25519:' + \
-#        base58.b58encode(account.signer.public_key).decode('utf-8')s
+def sign_quote(quote: dict) -> Commitment:
+    print(f"Signing quote: {quote}")
+    quote_str = json.dumps(quote)
+    account = get_account()
+    signature = 'ed25519:' + \
+        base58.b58encode(account.signer.sign(
+            quote_str.encode('utf-8'))).decode('utf-8')
+    public_key = 'ed25519:' + \
+        base58.b58encode(account.signer.public_key).decode('utf-8')
+    print(f"Account signer public key: {public_key}")
+    try:
+        check_pub_key = ed25519.Ed25519PublicKey.from_public_bytes(
+            account.signer.public_key)
+        check_pub_key.verify(base58.b58decode(
+            signature[8:]), json.dumps(quote).encode('utf-8'))
+        print("Signature is valid. {signature}")
+    except ed25519.InvalidSignature:
+        print("Invalid signature.")
+
+    return Commitment(
+        standard="raw_ed25519",
+        payload=quote_str,
+        signature=signature,
+        public_key=public_key)
 
 def publish_intent(signed_intent):
+    print(f"Publishing intent: {json.dumps(signed_intent)}")
     """Publishes the signed intent to the solver bus."""
     try:
         rpc_request = {
@@ -315,72 +356,54 @@ def publish_intent(signed_intent):
         print(f"Error publishing intent {e}")
     return response.json()
 
-# testing logic that will be encapsulated in swap_near_for_usdc
-
 
 async def main():
 
-    # one_eth = 1000000000000000000
-    # one_sol = 1000000000
-
-    # token_quantities =  {"nep141:wrap.near": 5  * ONE_NEAR, "nep141:sol.omft.near": one_sol, "nep141:eth.omft.near":one_eth}
-    # target_usd_amount = 500
-
-    # print("USDT Quotes:", get_usdt_quotes({"nep141:wrap.near": 5  * ONE_NEAR}))
-    # print("USDC Quotes:", get_usdc_quotes({"nep141:wrap.near": 5  * ONE_NEAR}))
-
-    # Get the best quotes for swapping some NEAR to USDT
-    near_to_swap = 1 * ONE_NEAR
-    #best_quote = get_usdc_quotes({"nep141:wrap.near": near_to_swap})[0][1]
-    #print("best quote", best_quote)
-#
-#
     ## Create a publish_wnear_intent.json payload for the publish_intent call
-    #deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
-    #            ).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-#
+    deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
+                ).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+    # Get Quotes for USDT
+    best_quote = await get_usdt_quotes({"nep141:wrap.near": 1  * ONE_NEAR})
+    best_quote = best_quote[0][1]
+    print("Best USDT Quote:", best_quote)
+
     ## Generate a random nonce
-    #nonce_base64 = base64.b64encode(secrets.randbits(
-    #    256).to_bytes(32, byteorder='big')).decode('utf-8')
-#
-    #referral_fee_amount = str(
-    #    int(best_quote.get("amount_out")) // 100)  # 1% of amount_out
-    #amount_out_less_fee = str(
-    #    int(best_quote.get("amount_out")) - int(referral_fee_amount))
+    nonce_base64 = base64.b64encode(secrets.randbits(
+        256).to_bytes(32, byteorder='big')).decode('utf-8')
 
-    # TODO replace this with a MPC call to sign an intent payload
-
-    # This is how you swap with a 1% fee to benevio-labs.near
     #payload = Quote(signer_id=AccountId,
     #                nonce=nonce_base64,
     #                verifying_contract="intents.near",
     #                deadline=deadline,
     #                intents=[{"intent": "token_diff",
     #                          "diff": {best_quote.get("token_in"): "-" + str(best_quote.get("amount_in")),
-    #                                   best_quote.get("token_out"): amount_out_less_fee},
+    #                                   best_quote.get("token_out"): str(best_quote.get("amount_out"))},
     #                          "referral": "benevio-labs.near"},
-    #                         {"intent": "transfer",
-    #                          "receiver_id": "benevio-labs.near",
-    #                          "tokens": {best_quote.get("token_out"): referral_fee_amount,
-    #                                     },
-    #                          "memo": "referral_fee"}])
-    #
-    #signed_quote = sign_quote(payload)
-    #signed_intent = PublishIntent(signed_data=signed_quote, quote_hashes=[
-    #                              best_quote.get("quote_hash")])
+    #                       ])
+#
+    #publish_payload = sign_quote(payload)
+
 
 
     # TODO test client methods
-    client = NearMpcClient(network="testnet")
+    #client = NearMpcClient(network="mainnet")
 
-    client.derive_mpc_key("agent.charleslavon.testnet")
-
-
-
-    #result = agent.execute_swap(1000)  # Swap for 1000 USD worth
-    #print(f"Swap transaction: {result}")
-
-    #print(publish_intent(signed_intent))
+    #client.derive_mpc_key("agent.charleslavon.near")
 
 
-asyncio.run(main())
+    #signed_intent = await client.sign_intent("agent.charleslavon.near", best_quote["token_in"], best_quote["token_out"], best_quote["amount_in"], best_quote["amount_out"], best_quote["quote_hash"], best_quote["expiration_time"], nonce_base64)
+##
+    #publish_payload = Commitment(
+    #    standard="raw_ed25519", ## TODO start here, what standard to use?
+    #    payload=json.dumps(signed_intent.get("intent")),
+    #    signature=signed_intent.get("signature"),
+    #    public_key=signed_intent.get("public_key")
+    #)
+#
+    publish_payload = PublishIntent(signed_data=publish_payload, quote_hashes=[ best_quote.get("quote_hash")])
+
+    print(publish_intent(publish_payload))
+
+
+#asyncio.run(main())

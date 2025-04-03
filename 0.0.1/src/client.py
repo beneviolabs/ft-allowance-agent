@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 import aiohttp
 
-from models import MpcKey, Intent, IntentActions, PublicKey, SignatureRequest
+from src.models import MpcKey, Intent, IntentActions, PublicKey, SignatureRequest
 from py_near.account import Account
 from dotenv import load_dotenv
 import os
