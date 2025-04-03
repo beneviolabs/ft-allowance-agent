@@ -12,7 +12,12 @@ pub struct NearAction {
 impl NearAction {
     pub fn is_allowed(&self) {
         let allowed_contracts = ["wrap.near", "intents.near", "wrap.testnet"];
-        let allowed_methods = [ "add_public_key", "ft_transfer_call", "near_deposit", "sign_intent"];
+        let allowed_methods = [
+            "add_public_key",
+            "ft_transfer_call",
+            "near_deposit",
+            "sign_intent",
+        ];
         if !allowed_contracts.contains(&self.contract_id.as_str()) {
             panic!(
                 "{} is not allowed. Only wrap.near, wrap.testnet, and intents.near are permitted",

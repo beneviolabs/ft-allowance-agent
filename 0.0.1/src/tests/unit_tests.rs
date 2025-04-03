@@ -2,7 +2,10 @@
 mod tests {
 
     use near_sdk::{
-        env, json_types::{Base58CryptoHash, U64}, test_utils::{accounts, VMContextBuilder}, testing_env, AccountId, NearToken
+        env,
+        json_types::{Base58CryptoHash, U64},
+        test_utils::{accounts, VMContextBuilder},
+        testing_env, AccountId, NearToken,
     };
     use proxy_contract::ProxyContract;
 
@@ -93,13 +96,13 @@ mod tests {
         testing_env!(context.build());
         let mut contract = ProxyContract::new(accounts(1));
         contract.request_signature(
-            accounts(3),                       // contract_id: AccountId
-            Some("test_method".to_string()),         // method_name: String
-            "[{\"public_key\": \"ed25519:1234\"}]".to_string(),                     // args: String
-            near_sdk::json_types::U64(10),                // gas: U64
-            NearToken::from_near(1),           // deposit: NearToken
-            U64(1),                            // nonce: U64
-            Base58CryptoHash::from([0u8; 32]), // block_hash: Base58CryptoHash
+            accounts(3),                                        // contract_id: AccountId
+            Some("test_method".to_string()),                    // method_name: String
+            "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // args: String
+            near_sdk::json_types::U64(10),                      // gas: U64
+            NearToken::from_near(1),                            // deposit: NearToken
+            U64(1),                                             // nonce: U64
+            Base58CryptoHash::from([0u8; 32]),                  // block_hash: Base58CryptoHash
             "secp256k1:abcd".to_string(),
             "ed25519:wxyz".to_string(),
         );
@@ -127,22 +130,16 @@ mod tests {
             .into_vec()
             .expect("Failed to decode public key");
 
-        let result = contract.verify_ed25519_signature(
-            message.as_bytes().to_vec(),
-            signature,
-            public_key
-        );
+        let result =
+            contract.verify_ed25519_signature(message.as_bytes().to_vec(), signature, public_key);
 
         assert!(result, "Signature verification failed");
     }
 
-
-   // TODO add test_ed25519_verification_auth_proxy once this PR is deployed https://github.com/Near-One/mpc/pull/294
-
+    // TODO add test_ed25519_verification_auth_proxy once this PR is deployed https://github.com/Near-One/mpc/pull/294
 
     // #[test] can't get this to validate as expected
     fn test_secp256k1_verification() {
-
         // These data came from the auth_proxy siggy generation via MPC
         let context = get_context(accounts(1));
         testing_env!(context.build());
@@ -170,12 +167,12 @@ mod tests {
         let v: u8 = 1;
 
         // Try to recover the public key
-        let recovered_hex = contract.test_recover(hash.to_vec(), signature, v)
+        let recovered_hex = contract
+            .test_recover(hash.to_vec(), signature, v)
             .expect("Failed to recover public key");
 
         // Convert hex string to bytes
-        let recovered_bytes = hex::decode(&recovered_hex)
-            .expect("Failed to decode hex string");
+        let recovered_bytes = hex::decode(&recovered_hex).expect("Failed to decode hex string");
 
         // Convert to base58
         let recovered_base58 = bs58::encode(&recovered_bytes).into_string();
@@ -188,7 +185,10 @@ mod tests {
         env::log_str(&format!("Recovered public key: {}", recovered_base58));
         env::log_str(&format!("Expected public key: {}", expected_pk));
 
-        assert_eq!(recovered_base58, expected_pk, "Recovered public key doesn't match expected");
+        assert_eq!(
+            recovered_base58, expected_pk,
+            "Recovered public key doesn't match expected"
+        );
     }
 
     #[test]
@@ -205,10 +205,10 @@ mod tests {
 
         testing_env!(get_context(accounts(2)).build());
         contract.request_signature(
-            accounts(3),                       // contract_id
-            Some("ft_transfer".to_string()),         // method_name
+            accounts(3),                     // contract_id
+            Some("ft_transfer".to_string()), // method_name
             "[{\"public_key\": \"ed25519:1234\"}]".to_string(),
-            near_sdk::json_types::U64(10),                // gas
+            near_sdk::json_types::U64(10),     // gas
             NearToken::from_near(1),           // deposit
             U64(1),                            // nonce
             Base58CryptoHash::from([0u8; 32]), // block_hash
