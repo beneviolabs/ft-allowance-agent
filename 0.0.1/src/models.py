@@ -1,6 +1,19 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Optional
+
+
+@dataclass
+class DictMixin:
+    """Base class providing dictionary conversion functionality"""
+    def dict(self) -> dict:
+        """
+        Convert dataclass to dictionary, excluding None values.
+
+        Returns:
+            dict: Dictionary representation of the dataclass
+        """
+        return {k: v for k, v in asdict(self).items() if v is not None}
 
 @dataclass
 class NoncePermission:
@@ -21,27 +34,24 @@ class MpcKey:
 class IntentActions:
     intent: str
     diff: dict[str, str]
-    referral: Optional[str] = None
-    receiver_id: Optional[str] = None
-    tokens: Optional[dict[str, str]] = None
-    memo: Optional[str] = None
 
 @dataclass
-class Intent:
+class Intent(DictMixin):
     signer_id: str
     nonce: str
     verifying_contract: str
     deadline: datetime
-    token_diffs: list[IntentActions]
+    intents: list[IntentActions]
+
 
 @dataclass
-class SignatureRequest:
+class SignatureRequest(DictMixin):
     contract_id: str
-    method_name: str
     args: str
     deposit: str
     nonce: str
     block_hash: str
     mpc_signer_pk: str
     account_pk_for_mpc: str
+    method_name: Optional[str] = None
     gas: str = "50000000000000"
