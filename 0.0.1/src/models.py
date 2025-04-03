@@ -6,6 +6,7 @@ from typing import Optional
 @dataclass
 class DictMixin:
     """Base class providing dictionary conversion functionality"""
+
     def dict(self) -> dict:
         """
         Convert dataclass to dictionary, excluding None values.
@@ -15,25 +16,30 @@ class DictMixin:
         """
         return {k: v for k, v in asdict(self).items() if v is not None}
 
+
 @dataclass
 class NoncePermission:
     permission: str | dict[str, str]
     nonce: int
+
 
 @dataclass
 class PublicKey:
     access_key: NoncePermission
     public_key: str
 
+
 @dataclass
 class MpcKey:
     public_key: str
     account_id: str
 
+
 @dataclass
 class IntentActions:
     intent: str
     diff: dict[str, str]
+
 
 @dataclass
 class Intent(DictMixin):

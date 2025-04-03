@@ -1,8 +1,10 @@
-use near_sdk::{borsh::{self, BorshDeserialize, BorshSerialize}, AccountId};
-use omni_transaction::near::types::{Action, BlockHash, Signature, U64, PublicKey};
-use serde::{Deserialize, Serialize};
+use near_sdk::{
+    borsh::{self, BorshDeserialize, BorshSerialize},
+    AccountId,
+};
+use omni_transaction::near::types::{Action, BlockHash, PublicKey, Signature, U64};
 use schemars::JsonSchema;
-
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BigR {

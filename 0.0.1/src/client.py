@@ -68,7 +68,8 @@ class NearMpcClient:
                         raise ValueError(error_msg)
 
         except Exception as e:
-            logger.error(f"Failed to fetch block hash: {str(e)}", exc_info=True)
+            logger.error(
+                f"Failed to fetch block hash: {str(e)}", exc_info=True)
             raise
 
     def derive_mpc_key(self, proxy_account_id: str) -> MpcKey:
@@ -106,7 +107,7 @@ class NearMpcClient:
                 public_key = key["public_key"]
 
                 if (permission == "FullAccess" and
-                    public_key.startswith("ed25519:")):
+                        public_key.startswith("ed25519:")):
                     logger.info(f"Found full access key: {public_key}")
                     self._account_public_key = key["public_key"]
                     return self._account_public_key
@@ -121,7 +122,8 @@ class NearMpcClient:
     def _get_public_key(self, account_id: str) -> list[PublicKey]:
         """Returns public keys for a given account"""
         try:
-            response = self._query_rpc("view_access_key_list", {"finality": "final", "account_id": account_id})
+            response = self._query_rpc("view_access_key_list", {
+                                       "finality": "final", "account_id": account_id})
             if "keys" in response and len(response["keys"]) > 0:
                 return response["keys"]
             else:
@@ -137,15 +139,16 @@ class NearMpcClient:
             self.derive_mpc_key(proxy_account_id)
         try:
             logger.debug(f"Using derived key: {self._derived_key}")
-            response = self._query_rpc("view_access_key", {"finality": "final", "account_id": proxy_account_id, "public_key": self._derived_key})
+            response = self._query_rpc("view_access_key", {
+                                       "finality": "final", "account_id": proxy_account_id, "public_key": self._derived_key})
             if "nonce" in response:
                 return str(response["nonce"] + 10)
             else:
-                raise ValueError(f"No nonce found for account {proxy_account_id}")
+                raise ValueError(
+                    f"No nonce found for account {proxy_account_id}")
         except Exception as e:
             logger.error(f"Failed to get next nonce: {str(e)}", exc_info=True)
             raise
-
 
     async def request_signature(self, proxy_account_id: str, request: SignatureRequest) -> str:
         """Requests signature for given parameters"""
@@ -182,25 +185,28 @@ class NearMpcClient:
             result = await self.request_signature(proxy_account_id, signature_request)
             return result
         except Exception as e:
-            logger.error(f"Failed to publish swap intent: {str(e)}", exc_info=True)
+            logger.error(
+                f"Failed to publish swap intent: {str(e)}", exc_info=True)
             raise
 
     async def sign_intent(self,
-                    proxy_account_id: str,
-                    token_in_address: str,
-                    token_out_address: str,
-                    token_in_amount: str,
-                    token_out_amount: str,
-                    quote_hash: str,
-                    deadline: str,
-                    nonce: str) -> dict:
+                          proxy_account_id: str,
+                          token_in_address: str,
+                          token_out_address: str,
+                          token_in_amount: str,
+                          token_out_amount: str,
+                          quote_hash: str,
+                          deadline: str,
+                          nonce: str) -> dict:
         """Creates intent object with proper formatting"""
         logger.debug(f"Creating intent for signer: {proxy_account_id}")
         try:
 
             if self.network != "mainnet":
-                logger.error("Intent creation attempted on non-mainnet network")
-                raise ValueError("Intent creation is only supported on mainnet")
+                logger.error(
+                    "Intent creation attempted on non-mainnet network")
+                raise ValueError(
+                    "Intent creation is only supported on mainnet")
 
             token_diffs = [
                 IntentActions(
@@ -242,7 +248,8 @@ class NearMpcClient:
     async def _call_contract(self, proxy_account_id: str, params: dict) -> dict:
         """Signed as the agentic account, this function sends a transaction for an MPC signature request to the user's proxy account."""
         try:
-            agent_account = Account(os.environ['AGENT_ACCOUNT_ID'], os.environ['AGENT_SECRET_KEY'])
+            agent_account = Account(
+                os.environ['AGENT_ACCOUNT_ID'], os.environ['AGENT_SECRET_KEY'])
             await agent_account.startup()
 
             logger.info(f"Calling contract with params: {params}")
@@ -254,9 +261,10 @@ class NearMpcClient:
                 amount=1,
             )
 
-             # Log receipt outcomes
+            # Log receipt outcomes
             logger.info("Transaction Results:")
-            logger.info(f"Transaction Outcome: {result.transaction_outcome.status}")
+            logger.info(
+                f"Transaction Outcome: {result.transaction_outcome.status}")
 
             for idx, receipt in enumerate(result.receipt_outcome):
                 logger.info(f"Receipt Outcome {idx}:")
@@ -266,7 +274,8 @@ class NearMpcClient:
                 logger.info(f"    Receipt IDs: {receipt.receipt_ids}")
 
             if "SuccessValue" not in result.status:
-                raise Exception(f"Contract call failed with status: {result.status}")
+                raise Exception(
+                    f"Contract call failed with status: {result.status}")
             return result
 
         except Exception as e:
@@ -292,7 +301,6 @@ class NearMpcClient:
         logger.debug(f"Decoding Base64 value: {clean_value}")
         return clean_value
 
-
     def _query_rpc(self, method: str, params: dict) -> dict:
         """Makes RPC query to NEAR network"""
         logger.debug(f"Making RPC query - Method: {method}, Params: {params}")
@@ -314,7 +322,6 @@ class NearMpcClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"RPC query failed: {str(e)}", exc_info=True)
             raise
-
 
     def _parse_view_result(self, response: dict) -> str:
         """
@@ -341,5 +348,6 @@ class NearMpcClient:
             logger.info(f"Successfully parsed view result: {decoded}")
             return decoded
         except Exception as e:
-            logger.error(f"Failed to parse view result: {str(e)}", exc_info=True)
+            logger.error(
+                f"Failed to parse view result: {str(e)}", exc_info=True)
             raise

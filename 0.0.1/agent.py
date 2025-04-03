@@ -19,6 +19,7 @@ NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 DIVVY_GOALS = set(["allowance", "growth"])
 DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
 
+
 class Agent:
 
     def __init__(self, env: Environment):
@@ -51,7 +52,8 @@ class Agent:
     def allowance_goal(self) -> int | None:
         if self._allowance_goal is None:
             stored_goal = self.env.read_file("allowance_goal.txt")
-            self.env.add_system_log(f"Found stored allowance goal: {stored_goal}", logging.DEBUG)
+            self.env.add_system_log(
+                f"Found stored allowance goal: {stored_goal}", logging.DEBUG)
             if stored_goal:
                 self._allowance_goal = int(stored_goal)
         return self._allowance_goal
@@ -60,7 +62,8 @@ class Agent:
     def growth_goal(self) -> int | None:
         if self._growth_goal is None:
             stored_goal = self.env.read_file("growth_goal.txt")
-            self.env.add_system_log(f"Found stored growth goal: {stored_goal}", logging.DEBUG)
+            self.env.add_system_log(
+                f"Found stored growth goal: {stored_goal}", logging.DEBUG)
             if stored_goal:
                 self._growth_goal = int(stored_goal)
         return self._growth_goal
@@ -108,13 +111,15 @@ You must follow the following instructions:
         if tools_completion.message:
             self.env.add_reply(tools_completion.message)
         if tools_completion.tool_calls and len(tools_completion.tool_calls) > 0:
-            tool_call_results = self._handle_tool_calls(tools_completion.tool_calls)
+            tool_call_results = self._handle_tool_calls(
+                tools_completion.tool_calls)
             if len(tool_call_results) > 0:
                 self.env.add_system_log(
                     f"Got tool call results: {tool_call_results}", logging.DEBUG
                 )
 
-                context = [prompt] + self.env.list_messages() + tool_call_results
+                context = [prompt] + self.env.list_messages() + \
+                    tool_call_results
                 result = self.env.completion(context)
 
                 self.env.add_system_log(
@@ -153,7 +158,8 @@ You must follow the following instructions:
                 message_type="system",
             )
 
-        responses.append(self._to_function_response(tool_name, self.near_account_id))
+        responses.append(self._to_function_response(
+            tool_name, self.near_account_id))
         return responses
 
     def get_near_account_balance(self) -> typing.List[typing.Dict]:
@@ -191,7 +197,8 @@ You must follow the following instructions:
             balance = get_near_account_balance(self.near_account_id)
             if balance:
                 self.near_account_balance = yocto_to_near(balance)
-            self.env.add_reply("Found the user's balance", message_type="system")
+            self.env.add_reply("Found the user's balance",
+                               message_type="system")
         else:
             self.env.add_reply(
                 "We couldn't fetch a balance because no NEAR account ID is set. What is your near account ID?",
@@ -205,23 +212,26 @@ You must follow the following instructions:
         """Fetch the real-time market prices of the tokens in a user's wallet (e.g. NEAR, BTC, ETH, SOL)"""
         tool_name = self._get_tool_name()
 
-
         self.env.add_reply(
             "Fetching the current prices of the tokens in your wallet..."
         )
         near_price = fetch_coinbase("near")
         near_price = (
-            fetch_coingecko("near") if isinstance(near_price, bool) else near_price
+            fetch_coingecko("near") if isinstance(
+                near_price, bool) else near_price
         )
 
         btc_price = fetch_coinbase("btc")
-        btc_price = fetch_coingecko("btc") if isinstance(btc_price, bool) else btc_price
+        btc_price = fetch_coingecko("btc") if isinstance(
+            btc_price, bool) else btc_price
 
         eth_price = fetch_coinbase("eth")
-        eth_price = fetch_coingecko("eth") if isinstance(eth_price, bool) else eth_price
+        eth_price = fetch_coingecko("eth") if isinstance(
+            eth_price, bool) else eth_price
 
         sol_price = fetch_coinbase("sol")
-        sol_price = fetch_coingecko("sol") if isinstance(sol_price, bool) else sol_price
+        sol_price = fetch_coingecko("sol") if isinstance(
+            sol_price, bool) else sol_price
         self.prices = [
             "NEAR:",
             near_price,
@@ -253,7 +263,8 @@ You must follow the following instructions:
                 )
             goals[type_] = goal
 
-        responses.append(self._to_function_response(self._get_tool_name(), goals))
+        responses.append(self._to_function_response(
+            self._get_tool_name(), goals))
         return responses
 
     def _handle_tool_calls(
@@ -333,7 +344,6 @@ You must follow the following instructions:
             )
         return [self._to_function_response(tool_name, self.recommended_tokens or [])]
 
-
     def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
         """Save the Near account ID the user provides"""
         responses = []
@@ -406,7 +416,6 @@ You must follow the following instructions:
         if type_ == "growth":
             self._growth_goal = goal
 
-
     def execute_swap(self):
         """Execute a swap to realize the desired allowance goal"""
         # Ensure we have account ID
@@ -437,26 +446,26 @@ You must follow the following instructions:
 
         # TODO create an intent payload with best_quote
 
-        #intent = self._client.create_intent(
+        # intent = self._client.create_intent(
         #    signer_id=self.near_account_id,
         #    token_diffs=self.get_token_diffs(self.allowance_goal)
-        #)
+        # )
 
         # TODO requst a signature for teh intent
 
-        #return self._client.request_signature(
+        # return self._client.request_signature(
         #    SignatureRequest(
         #        contract_id="intents.near",
         #        method_name="sign_intent",
         #        args=json.dumps(intent.dict())
         #    )
-        #)
+        # )
 
         # TODO publish the intent with the MPC signature
 
         # what should be our return value?
 
+
 if globals().get('env', None):
     agent = Agent(globals().get('env', {}))
     agent.run()
-

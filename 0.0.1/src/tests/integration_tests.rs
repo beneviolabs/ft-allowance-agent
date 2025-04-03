@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod integration_tests {
 
@@ -207,8 +206,12 @@ mod integration_tests {
 
         let _ = contract
             .batch()
-            .call(Function::new("add_authorized_user").args_json(json!({ "account_id": user1.id() })))
-            .call(Function::new("add_authorized_user").args_json(json!({ "account_id": user2.id() })))
+            .call(
+                Function::new("add_authorized_user").args_json(json!({ "account_id": user1.id() })),
+            )
+            .call(
+                Function::new("add_authorized_user").args_json(json!({ "account_id": user2.id() })),
+            )
             .transact()
             .await?;
 
