@@ -190,7 +190,7 @@ You must follow the following instructions:
         if self.near_account_id:
             balance = get_near_account_balance(self.near_account_id)
             if balance:
-                self.near_account_balance = yocto_to_near(float(balance))
+                self.near_account_balance = yocto_to_near(balance)
             self.env.add_reply("Found the user's balance", message_type="system")
         else:
             self.env.add_reply(
