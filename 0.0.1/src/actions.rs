@@ -3,7 +3,7 @@ use near_sdk::{near, AccountId, Gas, NearToken};
 #[near(serializers = [json, borsh])]
 #[derive(Clone)]
 pub struct NearAction {
-    pub method_name: String,
+    pub method_name: Option<String>,
     pub contract_id: AccountId,
     pub gas_attached: Gas,
     pub deposit_attached: NearToken,
@@ -19,8 +19,10 @@ impl NearAction {
                 self.contract_id
             );
         }
-        if !allowed_methods.contains(&self.method_name.as_str()) {
-            panic!("Method {} is restricted", self.method_name);
+        if let Some(method) = &self.method_name {
+            if !allowed_methods.contains(&method.as_str()) {
+                panic!("Method {} is restricted", method);
+            }
         }
     }
 }
