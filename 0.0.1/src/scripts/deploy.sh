@@ -10,6 +10,9 @@ fi
 echo "Clearing previous builds..."
 cargo clean
 
+echo "Running cargo formatter "
+cargo fmt
+
 # Build the contract
 echo "Building contract..."
 env RUSTFLAGS='-Ctarget-cpu=mvp' cargo +nightly build -Zbuild-std=panic_abort,std --target=wasm32-unknown-unknown --release
