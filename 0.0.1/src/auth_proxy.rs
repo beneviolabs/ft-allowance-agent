@@ -6,7 +6,7 @@ use near_sdk::collections::UnorderedSet;
 use near_sdk::ext_contract;
 use near_sdk::json_types::{Base58CryptoHash, U64};
 use near_sdk::{
-    bs58, env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError,
+    bs58, near, env, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError,
     PublicKey,
 };
 use near_sdk::base64;
@@ -22,6 +22,7 @@ use omni_transaction::{
     NEAR,
 };
 
+use ed25519_dalek::{PublicKey as PublicKey2, Signature as Ed25519Signature2, Verifier};
 mod models;
 mod actions;
 mod utils;
@@ -34,8 +35,8 @@ pub trait ExtSelf {
 }
 
 
-const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(50);
-const BASE_GAS: Gas = Gas::from_tgas(5);  // Base gas for contract execution
+const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
+const BASE_GAS: Gas = Gas::from_tgas(10);  // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
@@ -90,10 +91,100 @@ impl ProxyContract {
     }
 
     #[payable]
+    // TODO - test this after adding a callback fn specifically for this
+    pub fn request_sign_message(
+        &mut self,
+        contract_id: AccountId,
+        method_name: Option<String>,
+        args: String,
+        gas: U64,
+        deposit: NearToken,
+        nonce: U64,
+        block_hash: Base58CryptoHash,
+        account_pk_for_mpc: String,
+    ) -> Promise {
+
+        let attached_gas = env::prepaid_gas();
+        assert!(
+            attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
+            "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
+            GAS_FOR_REQUEST_SIGNATURE.as_tgas(),
+            attached_gas.as_tgas()
+        );
+
+        assert!(
+            self.authorized_users
+                .contains(&env::predecessor_account_id()),
+            "Unauthorized: only authorized users can request signatures"
+        );
+
+        // Calculate remaining gas after base costs
+        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
+        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
+
+        near_sdk::env::log_str(&format!(
+            "Request received - Contract: {}, Method: {:?}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
+            contract_id,
+            method_name,
+            args,
+            gas.0,
+            deposit.as_yoctonear(),
+            nonce.0,
+            block_hash
+        ));
+
+        let action = NearAction {
+            method_name: method_name.clone(),
+            contract_id: contract_id.clone(),
+            gas_attached: NearGas::from_gas(gas.0),
+            deposit_attached: deposit,
+        };
+
+        // verify the action is permitted
+        NearAction::is_allowed(&action);
+
+        // Store original args for callback verification
+        let original_args = args.clone();
+        near_sdk::env::log_str(&format!("Original args: {}", original_args));
+
+        // Extract just the function call args as the payload
+        let args_bytes = args.into_bytes();
+        let hashed_payload = utils::hash_payload(&args_bytes);
+
+        near_sdk::env::log_str(&format!(
+            "Signing just args payload - Hash: {:?}",
+            bs58::encode(&hashed_payload).into_string()
+        ));
+
+        let request = SignRequest {
+            payload: args_bytes,  // Send raw args instead of transaction hash
+            path: account_pk_for_mpc,
+            key_version: 0,
+        };
+
+        let request_payload = serde_json::json!({
+            "request": request,
+        });
+
+        Promise::new(self.signer_contract.clone())
+            .function_call(
+                "sign".to_string(),
+                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                env::attached_deposit(),
+                gas_for_signing,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .sign_request_callback(original_args),
+            )
+    }
+
+    #[payable]
     pub fn request_signature(
         &mut self,
         contract_id: AccountId,
-        method_name: String,
+        method_name: Option<String>,
         args: String,
         gas: U64,
         deposit: NearToken,
@@ -122,7 +213,7 @@ impl ProxyContract {
         let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
 
         near_sdk::env::log_str(&format!(
-            "Request received - Contract: {}, Method: {}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
+            "Request received - Contract: {}, Method: {:?}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
             contract_id,
             method_name,
             args,
@@ -146,7 +237,7 @@ impl ProxyContract {
         let args_bytes = args.into_bytes();
 
         let actions = vec![OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
-            method_name: method_name.clone(),
+            method_name: method_name.unwrap_or_default(),
             args: args_bytes,
             gas: OmniU64(gas.into()),
             deposit: OmniU128(deposit.as_yoctonear()),
@@ -188,6 +279,7 @@ impl ProxyContract {
         // SHA-256 hash of the serialized transaction
         let hashed_payload = utils::hash_payload(&tx.build_for_signing());
 
+
         // Log arguments used for signature request
         near_sdk::env::log_str(&format!(
             "Signing request - transaction hash: {:?}, Path: {}, Key Version: {}",
@@ -219,12 +311,13 @@ impl ProxyContract {
             )
     }
 
+    // TODO create another verison of this function that expects a string messaage instead of a txn string
     #[private] // Only callable by the contract itself
     pub fn sign_request_callback(
         &mut self,
         #[callback_result] call_result: Result<SignatureResponse, PromiseError>,
         tx_json_string: String,
-    ) -> Vec<u8>{
+    ) -> String{
         let response = match call_result {
             Ok(json) => {
                 near_sdk::env::log_str(&format!("Parsed JSON response: {:?}", json));
@@ -262,9 +355,20 @@ impl ProxyContract {
         // Create signature
         let omni_signature = Signature::SECP256K1(Secp256K1Signature(signature_bytes));
 
+        // Log signature bytes
+        near_sdk::env::log_str(&format!("Signature bytes: {:?}", &signature_bytes));
+
+
         // Deserialize transaction
         let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
                 .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
+
+        // Log signature in hex format
+        near_sdk::env::log_str(&format!("Signature in hex: {:?}", hex::encode(&signature_bytes)));
+
+        // Log signature in base58 format
+        let siggy_base58 = bs58::encode(&signature_bytes).into_string();
+        near_sdk::env::log_str(&format!("Signature in base58: {}", siggy_base58));
 
         // Add signature to transaction
         let near_tx_signed = near_tx.build_with_signature(omni_signature);
@@ -272,8 +376,50 @@ impl ProxyContract {
         let base64_tx = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &near_tx_signed);
         near_sdk::env::log_str(&format!("Signed transaction (base64): {}", base64_tx));
 
-        near_tx_signed
+        siggy_base58
 
+    }
+
+    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
+        let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
+
+        env::log_str(&format!("Hash: {}", hex::encode(&hash)));
+        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
+        env::log_str(&format!("V: {}", v));
+
+        recovered.map(|key: [u8; 64]| {
+            let hex_key: String = hex::encode(&key);
+            env::log_str(&format!("Recovered key: {}", hex_key));
+            hex_key
+        })
+    }
+
+    pub fn verify_ed25519_signature(&self, message: Vec<u8>, signature: Vec<u8>, public_key: Vec<u8>) -> bool {
+        env::log_str(&format!("Message: {}", hex::encode(&message)));
+        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
+        env::log_str(&format!("Public Key: {}", hex::encode(&public_key)));
+
+        match (
+            Ed25519Signature2::from_bytes(signature.as_slice().try_into().unwrap()),
+            PublicKey2::from_bytes(public_key.as_slice().try_into().unwrap())
+        ) {
+            (Ok(sig), Ok(pk)) => {
+                match pk.verify(&message, &sig) {
+                    Ok(_) => {
+                        env::log_str("Signature verification succeeded");
+                        true
+                    }
+                    Err(e) => {
+                        env::log_str(&format!("Verification failed: {:?}", e));
+                        false
+                    }
+                }
+            }
+            _ => {
+                env::log_str("Failed to parse signature or public key");
+                false
+            }
+        }
     }
 
     // Owner methods for managing authorized users

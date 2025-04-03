@@ -36,7 +36,7 @@
 1. Run the agent locally
 
    ```sh
-   nearai agent interactive ~/.nearai/registry/<your-acc>.near/ft-allowance-agent/0.0.1 --local
+   nearai agent interactive ~/.nearai/registry/<your-acc>.near/ft-allowance/0.0.1 --local
    # > hi
    # < Assistant: Hello! I'm here
    ```

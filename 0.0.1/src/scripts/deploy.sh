@@ -29,6 +29,11 @@ if [ -z "$AGENT_PARENT_ACCOUNT" ]; then
     exit 1
 fi
 
+if [ -z "$AGENT_PROXY_ACCOUNT" ]; then
+    echo "Error: AGENT_PROXY_ACCOUNT environment variable is not set"
+    exit 1
+fi
+
 # Check if contract needs initialization
 echo "Checking agent proxy account state..."
 CONTRACT_STATE=$(near state $AGENT_PROXY_ACCOUNT)
