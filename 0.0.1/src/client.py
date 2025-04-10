@@ -1,17 +1,143 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import logging
-from typing import Optional
+from typing import Optional, Dict, List
+from decimal import Decimal
 import aiohttp
+from utils import get_usdt_token_out_type, get_usdc_token_out_type
 
-from src.models import MpcKey, Intent, IntentActions, PublicKey, SignatureRequest
+from models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, SignatureRequest
 from py_near.account import Account
 from dotenv import load_dotenv
 import os
 import base64
 import base58
 import json
+from logger_config import configure_logging
+configure_logging()
 logger = logging.getLogger(__name__)
+
+
+class OneClickClient:
+    BASE_URL = "https://1click.chaindefuser.com/v0"
+
+    def __init__(self):
+        self.session = aiohttp.ClientSession()
+        logger.debug("OneClickClient initialized")
+
+    async def close(self):
+        await self.session.close()
+
+    async def get_supported_tokens(self) -> List[Dict]:
+        """Fetch list of supported tokens from 1click API"""
+        try:
+            async with self.session.get(f"{self.BASE_URL}/tokens") as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"Got supported tokens: {len(data)} tokens")
+                    return data
+                else:
+                    logger.error(f"Failed to get tokens: {response.status}")
+                    return []
+        except Exception as e:
+            logger.error(f"Error fetching supported tokens: {e}")
+            raise
+
+    async def get_quote(
+        self,
+        token_in: str,
+        token_out: str,
+        amount_in: Decimal,
+        depositor_address: str,
+        recipient: str,
+        dry: bool = True,
+        slippage_tolerance: int = 100,
+        deadline: Optional[str] = None
+    ) -> Optional[OneClickQuote]:
+        """
+            Get quote for swapping tokens using 1click API
+
+            Args:
+                token_in: Input token identifier (e.g. "nep141:wrap.near")
+                token_out: Output token identifier (e.g. "nep141:usdc.near")
+                amount_in: Amount of input token
+                dry: If True, returns quote without executing swap
+                slippage_tolerance: Maximum allowed slippage (default 1%)
+                refund_to: Address to refund to if swap fails
+                recipient: Address to receive swapped tokens
+                deadline: Timestamp when a refund will be triggered
+        """
+        logger.debug(
+            f"Getting quote for {amount_in} {token_in} to {token_out}")
+
+        try:
+            # Set deadline to 15 minutes from now if not provided
+            if deadline is None:
+                future_time = datetime.now(
+                    timezone.utc) + timedelta(minutes=15)
+                deadline = future_time.strftime(
+                    '%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+                logger.debug(f"Generated deadline: {deadline}")
+
+            payload = {
+                "dry": dry,
+                # request a quote given an exact input amount. The refundTo address will always receive excess tokens back even after the swap is complete.
+                "swapType": "EXACT_INPUT",
+                "slippageTolerance": slippage_tolerance,
+                "originAsset": token_in,
+                # For deposits orignating from a near account.  Otherwise use "INTENTS"
+                "depositType": "INTENTS",
+                "destinationAsset": token_out,
+                # denoted in the smallest unit of the specified currency (e.g., wei for ETH).
+                "amount": str(amount_in),
+                "refundTo": depositor_address,
+                "refundType": "INTENTS",  # or use "INTENTS" to refund the assets to the intents account
+                "recipient": recipient,  # The format should match recipientType
+                "recipientType": "DESTINATION_CHAIN",
+                "deadline": deadline,
+                "referral": "benevio-labs.near"
+            }
+            logger.debug(f"Sending quote request with payload: {payload}")
+
+            async with self.session.post(
+                f"{self.BASE_URL}/quote",
+                json=payload
+            ) as response:
+                if response.status in [200, 201]:
+                    data = await response.json()
+                    # logger.debug(f"Quote response: {data}")
+                    if not dry:
+                        logger.info(
+                            f"Swap initiated with deposit address: {data.get('deposit_address')}")
+
+                    return OneClickQuote(**data)
+                else:
+                    error_body = await response.text()
+                    logger.error(
+                        f"Failed to get quote. Status code: {response.status}")
+                    logger.error(f"Failed to get quote: {error_body}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting quote: {e}")
+            raise
+
+    async def check_transaction_status(self, deposit_address: str) -> Dict:
+        """Check status of a transaction using deposit address"""
+        try:
+            async with self.session.get(
+                f"{self.BASE_URL}/status?depositAddress={deposit_address}"
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.debug(f"Got transaction status: {data}")
+                    return data
+                else:
+                    error_body = await response.text()
+                    logger.error(f"Failed to get status: {error_body}")
+                    return {}
+        except Exception as e:
+            logger.error(f"Error checking transaction status: {e}")
+            raise
 
 
 class NearMpcClient:
@@ -22,11 +148,45 @@ class NearMpcClient:
         # Validate required environment variables
         self._validate_env_vars()
 
+        self.oneclickapi = OneClickClient()
         self.network = network
         self.rpc_url = f"https://rpc.{network}.fastnear.com"
         self.mpc_signer = "v1.signer-prod.testnet" if network == "testnet" else "v1.signer"
         self._derived_key: Optional[str] = None
         self._account_public_key: Optional[PublicKey] = None
+
+    async def close(self):
+        await self.oneclickapi.session.close()
+
+    async def get_stablecoin_quotes(
+        self,
+        token_in: str,
+        amount_in: str,
+        requested_by_address: str,
+        dry: bool = True,
+    ) -> Dict[str, OneClickQuote]:
+        """Get quotes for both USDC and USDT swaps"""
+        quotes = {}
+
+        # get stablecoin identifiers depending on the input token
+        stablecoins = {
+            "USDC": get_usdc_token_out_type(token_in),
+            "USDT": get_usdt_token_out_type(token_in)
+        }
+
+        for name, token_id in stablecoins.items():
+            quote = await self.oneclickapi.get_quote(
+                token_in,
+                token_id,
+                amount_in,
+                requested_by_address,
+                requested_by_address,
+                dry,
+            )
+            if quote:
+                quotes[name] = quote
+
+        return quotes
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set"""
