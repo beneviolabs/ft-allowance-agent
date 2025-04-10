@@ -1,3 +1,4 @@
+from decimal import Decimal
 import logging
 import inspect
 import json
@@ -416,8 +417,9 @@ You must follow the following instructions:
         if type_ == "growth":
             self._growth_goal = goal
 
-    def execute_swap(self):
+    async def execute_swap(self):
         """Execute a swap to realize the desired allowance goal"""
+
         # Ensure we have account ID
         if not self.near_account_id:
             self.find_near_account_id()
@@ -435,35 +437,42 @@ You must follow the following instructions:
             self.recommend_token_allocations_to_swap_for_stablecoins()
 
         # Get quotes for both USDC and USDT
-        usdc_quotes = get_usdc_quotes(self.recommended_tokens)
-        usdt_quotes = get_usdt_quotes(self.recommended_tokens)
+        #  TODO get num tokens to swap by some other mean, direct user input?
+        amount_in = Decimal(self.recommended_tokens.get("NEAR", 0))
 
-        # Choose the highest value
-        if usdc_quotes.usd_value > usdt_quotes.usd_value:
-            best_quote = usdc_quotes
-        else:
-            best_quote = usdt_quotes
+        quotes = await self._client.get_stablecoin_quotes("nep141:wrap.near", amount_in, self.near_account_id)
 
-        # TODO create an intent payload with best_quote
+        # Choose best quote between USDC and USDT based on minimum amount out with slippage taken into account
+        best_quote = None
+        if quotes.get("USDC") and quotes.get("USDT"):
+            usdc_amount = Decimal(quotes["USDC"].quote.get("minAmountOut", 0))
+            usdt_amount = Decimal(quotes["USDT"].quote.get("minAmountOut", 0))
+            best_quote = quotes["USDC"] if usdc_amount > usdt_amount else quotes["USDT"]
+        elif quotes.get("USDC"):
+            best_quote = quotes["USDC"]
+        elif quotes.get("USDT"):
+            best_quote = quotes["USDT"]
 
-        # intent = self._client.create_intent(
-        #    signer_id=self.near_account_id,
-        #    token_diffs=self.get_token_diffs(self.allowance_goal)
-        # )
+        if not best_quote:
+            self.env.add_system_log(
+                "No valid quotes received",
+                logging.ERROR
+            )
 
-        # TODO requst a signature for teh intent
+        # The manner in which to execute a swap will depend on the token_in and token_out. For Near to USDC/USDT, it is necessary to "deposit near into your intents account or already have it there and then make a transfer to depositAddress"
+        # TODO update the transfer to depositAddress pending the outcome of this chat: https://t.me/near_intents/516/2946
+        deposit_address = best_quote.quote.get("depositAddress")
 
-        # return self._client.request_signature(
-        #    SignatureRequest(
-        #        contract_id="intents.near",
-        #        method_name="sign_intent",
-        #        args=json.dumps(intent.dict())
-        #    )
-        # )
 
-        # TODO publish the intent with the MPC signature
+        # Monitor status
+        status = await self._client.check_transaction_status(deposit_address)
 
-        # what should be our return value?
+        self.env.add_system_log(
+            f"Swap initiated - Status: {status}",
+            logging.INFO
+        )
+
+        return status
 
 
 if globals().get('env', None):

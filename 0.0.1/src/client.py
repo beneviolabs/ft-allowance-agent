@@ -4,17 +4,20 @@ import logging
 from typing import Optional, Dict, List
 from decimal import Decimal
 import aiohttp
-from utils import get_usdt_token_out_type, get_usdc_token_out_type
 
-from models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, SignatureRequest
+from .utils import get_usdt_token_out_type, get_usdc_token_out_type
+from .models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, SignatureRequest
+
 from py_near.account import Account
 from dotenv import load_dotenv
 import os
 import base64
-import base58
+
 import json
-from logger_config import configure_logging
-configure_logging()
+
+# Expose this logger config when testing these methods directly, without using the AI interface
+# from .logger_config import configure_logging
+# configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -22,8 +25,14 @@ class OneClickClient:
     BASE_URL = "https://1click.chaindefuser.com/v0"
 
     def __init__(self):
-        self.session = aiohttp.ClientSession()
+        self.session = None
         logger.debug("OneClickClient initialized")
+
+    async def _ensure_session(self):
+        """Ensures a client session exists"""
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
+        return self.session
 
     async def close(self):
         await self.session.close()
@@ -31,7 +40,8 @@ class OneClickClient:
     async def get_supported_tokens(self) -> List[Dict]:
         """Fetch list of supported tokens from 1click API"""
         try:
-            async with self.session.get(f"{self.BASE_URL}/tokens") as response:
+            session = await self._ensure_session()
+            async with session.get(f"{self.BASE_URL}/tokens") as response:
                 if response.status == 200:
                     data = await response.json()
                     logger.info(f"Got supported tokens: {len(data)} tokens")
@@ -85,13 +95,14 @@ class OneClickClient:
                 "swapType": "EXACT_INPUT",
                 "slippageTolerance": slippage_tolerance,
                 "originAsset": token_in,
-                # For deposits orignating from a near account.  Otherwise use "INTENTS"
+                # For deposits orignating from a near account.  Otherwise use "ORIGIN_CHAIN"
                 "depositType": "INTENTS",
                 "destinationAsset": token_out,
                 # denoted in the smallest unit of the specified currency (e.g., wei for ETH).
                 "amount": str(amount_in),
                 "refundTo": depositor_address,
-                "refundType": "INTENTS",  # or use "INTENTS" to refund the assets to the intents account
+                # or use "ORIGIN_CHAIN" to refund the assets to account on their original chain
+                "refundType": "INTENTS",
                 "recipient": recipient,  # The format should match recipientType
                 "recipientType": "DESTINATION_CHAIN",
                 "deadline": deadline,
@@ -99,13 +110,13 @@ class OneClickClient:
             }
             logger.debug(f"Sending quote request with payload: {payload}")
 
-            async with self.session.post(
+            session = await self._ensure_session()
+            async with session.post(
                 f"{self.BASE_URL}/quote",
                 json=payload
             ) as response:
                 if response.status in [200, 201]:
                     data = await response.json()
-                    # logger.debug(f"Quote response: {data}")
                     if not dry:
                         logger.info(
                             f"Swap initiated with deposit address: {data.get('deposit_address')}")

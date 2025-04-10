@@ -447,14 +447,14 @@ async def demo_quote():
         await client.close()
 
 
-def main():
-    """Entry point that properly handles async execution"""
-    try:
-        asyncio.get_event_loop().run_until_complete(demo_quote())
-    except Exception as e:
-        print(f"Error in main: {e}")
-        logger.error(f"Failed to run demo: {str(e)}")
+# def main():
+#    """Entry point that properly handles async execution"""
+#    try:
+#        asyncio.get_event_loop().run_until_complete(demo_quote())
+#    except Exception as e:
+#        print(f"Error in main: {e}")
+#        logger.error(f"Failed to run demo: {str(e)}")
+#
 
-
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#    main()
