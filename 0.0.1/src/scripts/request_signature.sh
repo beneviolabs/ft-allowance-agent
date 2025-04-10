@@ -4,7 +4,7 @@
 if [ -z "$1" ] || [ -z "$2" ]; then
     echo "Error: Missing required parameters"
     echo "Usage: ./request_signature.sh <block_hash> <command> [agent_id]"
-    echo "Commands: add_key, sign_message, deposit"
+    echo "Commands: add_key, deposit"
     echo "Example: ./request_signature.sh abc123... deposit autonomous-agent.testnet"
     exit 1
 fi
@@ -97,28 +97,6 @@ execute_deposit() {
         --gas 100000000000000
 }
 
-execute_sign_message() {
-    if [ "$NEAR_ENV" = "mainnet" ]; then
-        CONTRACT_ID="intents.near"
-    else
-        echo "Error: sign_message command is only supported on mainnet"
-        exit 1
-    fi
-    echo "Executing sign_message..."
-    DEPOSIT_ARGS='{
-        "contract_id": "'"$CONTRACT_ID"'",
-        "args": "{\"signer_id\": \"charleslavon.near\", \"nonce\": \"5x9D1/ppzzCfGyDM6kjeIl560bbc2pvLMu+rIeiKyHE=\", \"verifying_contract\": \"intents.near\", \"deadline\": \"2025-04-02T18:58:10.000Z\", \"intents\": [{\"intent\": \"token_diff\", \"diff\": {\"nep141:wrap.near\": \"-1000000000000000000000000\", \"nep141:usdt.tether-token.near\": \"2642656\"}, \"referral\": \"benevio-labs.near\"}]}",
-        "gas": "300000000000000",
-        "deposit": "500000000000000000000000",
-        "nonce": "'"$NONCE"'",
-        "block_hash": "'"$BLOCK_HASH"'",
-        "account_pk_for_mpc": "'"$USER_PUBLIC_KEY_FOR_MPC"'"
-    }'
-    near call $AGENT_PROXY_ACCOUNT request_sign_message "$DEPOSIT_ARGS" \
-        --accountId $AGENT_ID \
-        --deposit 0.5 \
-        --gas 100000000000000
-}
 
 # Execute command based on input
 case "$COMMAND" in
@@ -127,9 +105,6 @@ case "$COMMAND" in
         ;;
     "deposit")
         execute_deposit
-        ;;
-    "sign_message")
-        execute_sign_message
         ;;
     *)
         echo "Error: Invalid command. Use 'add_key' or 'deposit'"
