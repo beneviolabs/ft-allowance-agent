@@ -4,7 +4,6 @@ import near_api
 from dotenv import load_dotenv
 from py_near.account import Account
 import asyncio
-from asyncio.log import logger
 from typing import Union
 import json
 import requests
@@ -19,6 +18,8 @@ from typing import List, Tuple, Dict, Union, TypedDict, Union
 
 from datetime import datetime, timedelta, timezone
 
+import logging
+logger = logging.getLogger(__name__)
 
 # from src.models import SignatureRequest
 # from src.client import NearMpcClient
@@ -369,14 +370,14 @@ def publish_intent(signed_intent):
     return response.json()
 
 
-async def main():
+def old_demo_of_manual_swaps():
 
     # Create a publish_wnear_intent.json payload for the publish_intent call
     deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)
                 ).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
     # Get Quotes for USDT
-    best_quote = await get_usdt_quotes({"nep141:wrap.near": 1 * ONE_NEAR})
+    # best_quote = await get_usdt_quotes({"nep141:wrap.near": 1 * ONE_NEAR})
     best_quote = best_quote[0][1]
     print("Best USDT Quote:", best_quote)
 
@@ -396,7 +397,6 @@ async def main():
 #
     # publish_payload = sign_quote(payload)
 
-    # TODO test client methods
     # client = NearMpcClient(network="mainnet")
 
     # client.derive_mpc_key("agent.charleslavon.near")
@@ -404,16 +404,57 @@ async def main():
     # signed_intent = await client.sign_intent("agent.charleslavon.near", best_quote["token_in"], best_quote["token_out"], best_quote["amount_in"], best_quote["amount_out"], best_quote["quote_hash"], best_quote["expiration_time"], nonce_base64)
 ##
     # publish_payload = Commitment(
-    #    standard="raw_ed25519", ## TODO start here, what standard to use?
+    #    standard="raw_ed25519",
     #    payload=json.dumps(signed_intent.get("intent")),
     #    signature=signed_intent.get("signature"),
     #    public_key=signed_intent.get("public_key")
     # )
 #
-    publish_payload = PublishIntent(signed_data=publish_payload, quote_hashes=[
-                                    best_quote.get("quote_hash")])
+    # publish_payload = PublishIntent(signed_data=publish_payload, quote_hashes=[
+#                                    best_quote.get("quote_hash")])
 
-    print(publish_intent(publish_payload))
+    # print(publish_intent(publish_payload))
 
 
-# asyncio.run(main())
+async def demo_quote():
+    """Demonstrate OneClick API quote functionality"""
+    from client import NearMpcClient
+
+    client = NearMpcClient(network="mainnet")
+    dry = False
+    try:
+
+        quotes = await client.get_stablecoin_quotes(
+            "nep141:wrap.near",
+            "100000000000000000000000",
+            "agent.charleslavon.near",
+            dry
+        )
+        logger.debug(f"Quote details: {quotes}")
+        # await client.oneclickapi.check_transaction_status("7d1eaa39006bcec14a040cdd10f876be458dc222e0dced46057bd0a036c36f08")
+
+        # supported_tokens = await client.oneclickapi.get_supported_tokens()
+        # print(f"Supported tokens: {supported_tokens}")
+
+        if not dry:
+            deposit_address = quotes["USDC"].quote.get("depositAddress")
+            print(f"Deposit address: {deposit_address}")
+
+            status = await client.oneclickapi.check_transaction_status(deposit_address)
+            print(f"Transaction status: {status}")
+
+    finally:
+        await client.close()
+
+
+def main():
+    """Entry point that properly handles async execution"""
+    try:
+        asyncio.get_event_loop().run_until_complete(demo_quote())
+    except Exception as e:
+        print(f"Error in main: {e}")
+        logger.error(f"Failed to run demo: {str(e)}")
+
+
+if __name__ == "__main__":
+    main()
