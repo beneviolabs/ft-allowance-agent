@@ -82,10 +82,7 @@ execute_deposit() {
     echo "Executing near_deposit..."
     DEPOSIT_ARGS='{
         "contract_id": "'"$CONTRACT_ID"'",
-        "method_name": "near_deposit",
-        "args": "{}",
-        "gas": "300000000000000",
-        "deposit": "1000000000000000000000000",
+        "actions_json": "[{\"type\":\"FunctionCall\", \"deposit\": \"50000000000000000000000\", \"gas\": \"300000000000000\", \"method_name\": \"near_deposit\", \"args\": \"\"}]",
         "nonce": "'"$NONCE"'",
         "block_hash": "'"$BLOCK_HASH"'",
         "mpc_signer_pk": "'"$MPC_DERIVED_PK"'",
