@@ -6,7 +6,7 @@ from decimal import Decimal
 import aiohttp
 
 from .utils import get_usdt_token_out_type, get_usdc_token_out_type
-from .models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, SignMessageSignatureRequest
+from .models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, MultiActionSignatureRequest, SignMessageSignatureRequest
 
 from py_near.account import Account
 from dotenv import load_dotenv
@@ -321,6 +321,62 @@ class NearMpcClient:
             logger.error(f"Failed to get next nonce: {str(e)}", exc_info=True)
             raise
 
+    async def _request_multi_action_signature(
+        self,
+        contract_id: str,
+        actions_json: str,
+        proxy_account_id: str,
+    ) -> Dict:
+        """
+        Request signature for multiple actions using MPC
+
+        Args:
+            contract_id: Target contract for the actions
+            actions_json: JSON string of actions to be signed
+            proxy_account_id: Account ID of the proxy contract
+
+        Returns:
+            Dict: Response from the proxy contract
+        """
+        try:
+            # Get latest block hash if not provided
+            block_hash = await self._get_latest_block_hash()
+
+            # Get next nonce for the account
+            nonce = await self._get_next_nonce()
+
+            # Create signature request
+            signature_request = MultiActionSignatureRequest(
+                contract_id=contract_id,
+                actions_json=actions_json,
+                nonce=str(nonce),
+                block_hash=block_hash,
+                mpc_signer_pk=self.mpc_signer_pk,
+                account_pk_for_mpc=self.account_pk_for_mpc
+            )
+
+            self.env.add_system_log(
+                f"Requesting multi-action signature for contract {contract_id}",
+                logging.DEBUG
+            )
+
+            # Call proxy contract
+            response = await self._call_contract(
+                proxy_account_id,
+                "request_signature",
+                signature_request.dict()
+            )
+
+            return response
+
+        except Exception as e:
+            self.env.add_system_log(
+                f"Failed to request multi-action signature: {str(e)}",
+                logging.ERROR
+            )
+            raise
+
+
     async def _request_intent_signature(self, proxy_account_id: str, intent: Intent, block_hash: str) -> str:
         """Publishes swap intent to Defuse network"""
         logger.debug(f"Publishing swap intent: {intent}")
@@ -341,7 +397,7 @@ class NearMpcClient:
             )
 
             # Request signature
-            result = await self._call_contract(proxy_account_id, signature_request.dict())
+            result = await self._call_contract(proxy_account_id, "request_sign_message", signature_request.dict())
             success_value = result.status.get('SuccessValue')
             logger.info(f"Successfully requested signature: {success_value}")
             return self._decode_success_value(success_value)
@@ -405,7 +461,7 @@ class NearMpcClient:
             logger.error(f"Intent creation failed: {str(e)}", exc_info=True)
             raise
 
-    async def _call_contract(self, proxy_account_id: str, params: dict) -> dict:
+    async def _call_contract(self, proxy_account_id: str, method_name: str, params: dict) -> dict:
         """Signed as the agentic account, this function sends a transaction for an MPC signature request to the user's proxy account."""
         try:
             agent_account = Account(
@@ -415,7 +471,7 @@ class NearMpcClient:
             logger.info(f"Calling contract with params: {params}")
             result = await agent_account.function_call(
                 proxy_account_id,
-                'request_signature',
+                method_name,
                 args=params,
                 gas=100000000000000,  # 100 TGas
                 amount=1,

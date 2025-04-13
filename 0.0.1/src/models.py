@@ -36,6 +36,16 @@ class MpcKey:
 
 
 @dataclass
+class MultiActionSignatureRequest:
+    contract_id: str
+    actions_json: str
+    nonce: str
+    block_hash: str
+    mpc_signer_pk: str
+    account_pk_for_mpc: str
+
+
+@dataclass
 class IntentActions:
     intent: str
     diff: dict[str, str]
