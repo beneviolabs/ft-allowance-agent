@@ -418,15 +418,15 @@ def old_demo_of_manual_swaps():
 
 async def demo_quote():
     """Demonstrate OneClick API quote functionality"""
-    from client import NearMpcClient
+    from .client import NearMpcClient
 
     client = NearMpcClient(network="mainnet")
-    dry = False
+    dry = True
     try:
 
         quotes = await client.get_stablecoin_quotes(
             "nep141:wrap.near",
-            "100000000000000000000000",
+            "50000000000000000000000",
             "agent.charleslavon.near",
             dry
         )
@@ -446,15 +446,3 @@ async def demo_quote():
     finally:
         await client.close()
 
-
-# def main():
-#    """Entry point that properly handles async execution"""
-#    try:
-#        asyncio.get_event_loop().run_until_complete(demo_quote())
-#    except Exception as e:
-#        print(f"Error in main: {e}")
-#        logger.error(f"Failed to run demo: {str(e)}")
-#
-
-# if __name__ == "__main__":
-#    main()
