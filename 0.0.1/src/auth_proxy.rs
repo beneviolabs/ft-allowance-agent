@@ -101,6 +101,95 @@ impl ProxyContract {
     }
 
     #[payable]
+    // TODO - test this when ed25519 signatuers are live and add a callback fn specifically for this
+    pub fn request_sign_message(
+        &mut self,
+        contract_id: AccountId,
+        method_name: Option<String>,
+        args: String,
+        gas: U64,
+        deposit: NearToken,
+        nonce: U64,
+        block_hash: Base58CryptoHash,
+        account_pk_for_mpc: String,
+    ) -> Promise {
+        let attached_gas = env::prepaid_gas();
+        assert!(
+            attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
+            "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
+            GAS_FOR_REQUEST_SIGNATURE.as_tgas(),
+            attached_gas.as_tgas()
+        );
+
+        assert!(
+            self.authorized_users
+                .contains(&env::predecessor_account_id()),
+            "Unauthorized: only authorized users can request signatures"
+        );
+
+        // Calculate remaining gas after base costs
+        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
+        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
+
+        near_sdk::env::log_str(&format!(
+            "Request received - Contract: {}, Method: {:?}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
+            contract_id,
+            method_name,
+            args,
+            gas.0,
+            deposit.as_yoctonear(),
+            nonce.0,
+            block_hash
+        ));
+
+        let action = NearAction {
+            method_name: method_name.clone(),
+            contract_id: contract_id.clone(),
+            gas_attached: NearGas::from_gas(gas.0),
+            deposit_attached: deposit,
+        };
+
+        // verify the action is permitted
+        NearAction::is_allowed(&action);
+
+        // Store original args for callback verification
+        let original_args = args.clone();
+        near_sdk::env::log_str(&format!("Original args: {}", original_args));
+
+        // Extract just the function call args as the payload
+        let args_bytes = args.into_bytes();
+        let hashed_payload = utils::hash_payload(&args_bytes);
+
+        near_sdk::env::log_str(&format!(
+            "Signing just args payload - Hash: {:?}",
+            bs58::encode(&hashed_payload).into_string()
+        ));
+
+        let request = SignRequest {
+            payload: args_bytes, // Send raw args instead of transaction hash
+            path: account_pk_for_mpc,
+            key_version: 0,
+        };
+
+        let request_payload = serde_json::json!({
+            "request": request,
+        });
+
+        Promise::new(self.signer_contract.clone())
+            .function_call(
+                "sign".to_string(),
+                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                env::attached_deposit(),
+                gas_for_signing,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .sign_request_callback(original_args),
+            )
+    }
+
+    #[payable]
     pub fn request_signature(
         &mut self,
         contract_id: AccountId,

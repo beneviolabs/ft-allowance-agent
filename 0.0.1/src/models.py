@@ -51,7 +51,7 @@ class Intent(DictMixin):
 
 
 @dataclass
-class SignatureRequest(DictMixin):
+class SignMessageSignatureRequest(DictMixin):
     contract_id: str
     args: str
     deposit: str
@@ -61,7 +61,6 @@ class SignatureRequest(DictMixin):
     account_pk_for_mpc: str
     method_name: Optional[str] = None
     gas: str = "50000000000000"
-
 
 @dataclass
 class QuoteRequest:

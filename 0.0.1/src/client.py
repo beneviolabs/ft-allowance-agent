@@ -6,7 +6,7 @@ from decimal import Decimal
 import aiohttp
 
 from .utils import get_usdt_token_out_type, get_usdc_token_out_type
-from .models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, SignatureRequest
+from .models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, SignMessageSignatureRequest
 
 from py_near.account import Account
 from dotenv import load_dotenv
@@ -16,8 +16,8 @@ import base64
 import json
 
 # Expose this logger config when testing these methods directly, without using the AI interface
-# from .logger_config import configure_logging
-# configure_logging()
+#from .logger_config import configure_logging
+#configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -95,7 +95,7 @@ class OneClickClient:
                 "swapType": "EXACT_INPUT",
                 "slippageTolerance": slippage_tolerance,
                 "originAsset": token_in,
-                # For deposits orignating from a near account.  Otherwise use "ORIGIN_CHAIN"
+                # For deposits orignating from a near account.  Otherwise use "INTENTS"
                 "depositType": "INTENTS",
                 "destinationAsset": token_out,
                 # denoted in the smallest unit of the specified currency (e.g., wei for ETH).
@@ -321,18 +321,6 @@ class NearMpcClient:
             logger.error(f"Failed to get next nonce: {str(e)}", exc_info=True)
             raise
 
-    async def request_signature(self, proxy_account_id: str, request: SignatureRequest) -> str:
-        """Requests signature for given parameters"""
-        logger.debug(f"Requesting signature with: {request.dict()}")
-        try:
-            result = await self._call_contract(proxy_account_id, request.dict())
-            success_value = result.status.get('SuccessValue')
-            logger.info(f"Successfully requested signature: {success_value}")
-            return self._decode_success_value(success_value)
-        except Exception as e:
-            logger.error(f"Signature request failed: {str(e)}", exc_info=True)
-            raise
-
     async def _request_intent_signature(self, proxy_account_id: str, intent: Intent, block_hash: str) -> str:
         """Publishes swap intent to Defuse network"""
         logger.debug(f"Publishing swap intent: {intent}")
@@ -342,7 +330,7 @@ class NearMpcClient:
             DEFAULT_ATTACHED_GAS = 100 * TGAS
 
             # Create signature request with cleaned intent
-            signature_request = SignatureRequest(
+            signature_request = SignMessageSignatureRequest(
                 contract_id=intent.verifying_contract,
                 args=json.dumps(intent.dict()),
                 deposit=str(DEFAULT_ATTACHED_GAS),
@@ -353,11 +341,12 @@ class NearMpcClient:
             )
 
             # Request signature
-            result = await self.request_signature(proxy_account_id, signature_request)
-            return result
+            result = await self._call_contract(proxy_account_id, signature_request.dict())
+            success_value = result.status.get('SuccessValue')
+            logger.info(f"Successfully requested signature: {success_value}")
+            return self._decode_success_value(success_value)
         except Exception as e:
-            logger.error(
-                f"Failed to publish swap intent: {str(e)}", exc_info=True)
+            logger.error(f"Signature request failed: {str(e)}", exc_info=True)
             raise
 
     async def sign_intent(self,
@@ -401,7 +390,7 @@ class NearMpcClient:
             block_hash = await self._fetch_latest_block_hash()
 
             signature = await self._request_intent_signature(proxy_account_id, intent, block_hash)
-            signature = 'secp256k1:' + signature
+            signature = 'ed25519:' + signature
 
             result = {
                 "signature": signature,
