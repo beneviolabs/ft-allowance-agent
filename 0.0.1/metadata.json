@@ -21,10 +21,10 @@
     },
     "agent": {
       "defaults": {
-        "model": "llama-v3p1-70b-instruct",
+        "model": "llama-3p1-405b-instruct",
         "model_provider": "fireworks",
         "model_temperature": 0.5,
-        "model_max_tokens": 16384
+        "model_max_tokens": 128000
       }
     },
     "display_name": "Token Allowance Agent"
