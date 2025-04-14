@@ -4,6 +4,7 @@ import json
 import re
 from src.client import NearMpcClient
 from src.models import SignatureRequest, MpcKey, Intent
+from src.fewshots import ALL_FEWSHOT_SAMPLES
 import typing
 from nearai.agents.environment import Environment, ChatCompletionMessageToolCall
 from src.utils import (
@@ -24,10 +25,10 @@ class Agent:
 
     def __init__(self, env: Environment):
         self.env = env
-        self._allowance_goal = None
+        self._allowance_goal = 400
         self.prices = None
         self.recommended_tokens = None
-        self._near_account_id = None
+        self._near_account_id = "ptke.near"
         self._growth_goal = None
         self.near_account_balance = None
         self._client = NearMpcClient(network=env.env_vars["network"])
@@ -90,7 +91,7 @@ You can fetch the NEAR account ID of the user.
 You can fetch the balance of the user.
 You can provide the real-time current market prices of crypto tokens in the users wallet.
 You can allow the user to set growth and allowance goals on their portfolio.
-You are capable of personalized recommendations for token swaps to achieve the user's allowance goal in stablecoins.
+You are capable of personalized recommendations for token swaps to achieve the user's allowance goal in USDC.
 You can also execute the token swaps to realize the desired allowance goal.
 You can also fetch the NEAR account balance of the user.
 
@@ -101,7 +102,7 @@ You must follow the following instructions:
 * When introducing yourself, provide a brief description of what your purpose is.
 * Your capabilities are facilitated by the functions/tools you have been given.
 * Tell the user if you don't support a capability. Do NOT make up or provide false information or figures.
-* Do not expose any tools/functions to the user.
+* Do not expose any tools/functions or implementation details to the user.
 * Do not use figures or function call from preceding messages to generate responses.
 * The executor expects you to specify which tools it should call and in which order. If multiple functions need to be called, generate multiple tool calls.
 """,
@@ -111,12 +112,15 @@ You must follow the following instructions:
         result = None
         tools = self.env.get_tool_registry().get_all_tool_definitions()
 
-        context = [prompt, self.env.get_last_message() or ""]
         self.env.add_system_log(
-            f"Checking whether tool calls are needed: \n Prompt Context: {context} \n --- \n Registered Tools: {[t['function']['name'] for t in tools]}",
+            f"Checking whether tool calls are needed: \n Registered Tools: {[t['function']['name'] for t in tools]}",
             logging.DEBUG,
         )
-        tools_completion = self.env.completion_and_get_tools_calls(context, tools=tools)
+
+        user_query = self.env.get_last_message()
+        tools_completion = self.env.completion_and_get_tools_calls(
+            [prompt, *ALL_FEWSHOT_SAMPLES, user_query], tools=tools
+        )
         self.env.add_system_log(
             f"Should call tools: {tools_completion.tool_calls}",
             logging.DEBUG,
@@ -131,11 +135,16 @@ You must follow the following instructions:
                     f"Got tool call results: {tool_call_results}", logging.DEBUG
                 )
 
-                context = [prompt] + self.env.list_messages() + tool_call_results
+                context = (
+                    [prompt]
+                    + self.env.list_messages()
+                    + ALL_FEWSHOT_SAMPLES
+                    + tool_call_results
+                )
                 result = self.env.completion(context)
 
                 self.env.add_system_log(
-                    f"Got completion for tool call with results: {result}.",
+                    f"Got completion for tool call with results: {result}. \n --- \n Context: {context}",
                     logging.DEBUG,
                 )
 
