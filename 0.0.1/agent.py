@@ -25,10 +25,10 @@ class Agent:
 
     def __init__(self, env: Environment):
         self.env = env
-        self._allowance_goal = 400
+        self._allowance_goal = None
         self.prices = None
         self.recommended_tokens = None
-        self._near_account_id = "ptke.near"
+        self._near_account_id = None
         self._growth_goal = None
         self.near_account_balance = None
         self._client = NearMpcClient(network=env.env_vars["network"])
