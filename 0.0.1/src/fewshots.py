@@ -49,7 +49,6 @@ MULTI_CALL_SAMPLE_1 = [
         "role": "example_assistant",
     },
 ]
-# TODO: add save_goals multi call example
 
 # recommend swaps
 RECOMMEND_SWAP_SAMPLE_1 = [
