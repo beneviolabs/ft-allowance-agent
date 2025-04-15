@@ -2,107 +2,7 @@
 Add examples to guide the LLM when a given tool just isn't working like you want it to.
 """
 
-# both fields are set
-GOALS_SAMPLE_1 = [
-    {
-        "id": "example_msg_1",
-        "content": "what are my goals",
-        "role": "example_user",
-    },
-    {
-        "role": "example_assistant",
-        "content": {
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "name": "get_goals",
-                    "arguments": {},
-                }
-            ]
-        },
-    },
-    {
-        "tool_call_id": "call_1",
-        "role": "tool",
-        "name": "get_goals",
-        "content": '{"growth": 200, "allowance": 400}',
-    },
-    {
-        "id": "example_msg_2",
-        "content": """Your current goals are:
-        * Growth goal: 200
-        * Allowance goal: 400 stablecoins
-        Let me know if you'd like to review or adjust these goals!
-        """,
-        "role": "example_assistant",
-    },
-]
-
-GOALS_SAMPLE_2 = [
-    {
-        "id": "example_msg_3",
-        "content": "show me my allowance goal",
-        "role": "example_user",
-    },
-    {
-        "role": "example_assistant",
-        "content": {
-            "tool_calls": [
-                {
-                    "id": "call_2",
-                    "name": "get_goals",
-                    "arguments": {},
-                }
-            ]
-        },
-    },
-    {
-        "tool_call_id": "call_2",
-        "role": "tool",
-        "name": "get_goals",
-        "content": '{"growth": "The user hasn\'t set a growth goal yet. Prompt them to provide one.", "allowance": 400}',
-    },
-    {
-        "id": "example_msg_4",
-        "content": "It looks like you haven't set a growth goal for your portfolio yet. Would you like to set one now? Additionally, I see that you have set an allowance goal of 400",
-        "role": "example_assistant",
-    },
-]
-
-# no goals are set
-GOALS_SAMPLE_3 = [
-    {
-        "id": "example_msg_5",
-        "content": "what are my goals",
-        "role": "example_user",
-    },
-    {
-        "role": "example_assistant",
-        "content": {
-            "tool_calls": [
-                {
-                    "id": "call_4",
-                    "name": "get_goals",
-                    "arguments": {},
-                }
-            ]
-        },
-    },
-    {
-        "tool_call_id": "call_4",
-        "role": "tool",
-        "name": "get_goals",
-        "content": '{"growth": "The user hasn\'t set a growth goal yet. Prompt them to provide one.", "allowance": "The user hasn\'t set a allowance goal yet. Prompt them to provide one."}',
-    },
-    {
-        "id": "example_msg_6",
-        "content": '{"growth": null, "allowance": null}',
-        "role": "example_assistant",
-    },
-]
-
 # multi function call
-# TODO: doesn't work, might be a library issue?
 MULTI_CALL_SAMPLE_1 = [
     {
         "id": "example_msg_1",
@@ -190,7 +90,7 @@ Would you like me to execute these swaps for you?.""",
     },
 ]
 
-# different wordings
+# different amounts
 RECOMMEND_SWAP_SAMPLE_2 = [
     {
         "id": "example_msg_1",

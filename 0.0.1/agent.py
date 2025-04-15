@@ -2,6 +2,10 @@ import logging
 import inspect
 import json
 import re
+import traceback
+
+from types import SimpleNamespace
+
 from src.client import NearMpcClient
 from src.models import SignatureRequest, MpcKey, Intent
 from src.fewshots import ALL_FEWSHOT_SAMPLES
@@ -25,7 +29,7 @@ class Agent:
 
     def __init__(self, env: Environment):
         self.env = env
-        self._allowance_goal = None
+        self._allowance_goal = 400
         self.prices = None
         self.recommended_tokens = None
         self._near_account_id = None
@@ -81,30 +85,26 @@ class Agent:
         # A system message guides an agent to solve specific tasks.
         prompt = {
             "role": "system",
-            "content": """
-You are Divvy, a financial assistant that helps users manage and grow their crypto portfolio.
+            # Set example responses for this in the fewshots.py
+            "content": """You are Divvy, a financial assistant that helps users manage and grow their crypto portfolio.
 Your user is a crypto beginner who is looking to set up a portfolio and achieve their financial goals.
-Your executor is a backend server that can call functions to perform various tasks.
+Your context will be populated by tool call results to help you respond to the user.
 
 -Capabilities-
-You can fetch the NEAR account ID of the user.
-You can fetch the balance of the user.
+You can show user account details such as their balance and their NEAR account ID.
 You can provide the real-time current market prices of crypto tokens in the users wallet.
 You can allow the user to set growth and allowance goals on their portfolio.
 You are capable of personalized recommendations for token swaps to achieve the user's allowance goal in USDC.
-You can also execute the token swaps to realize the desired allowance goal.
-You can also fetch the NEAR account balance of the user.
+You can fetch the NEAR account balance of the user.
 
 You must follow the following instructions:
 
 -Instructions-
 * Be polite and helpful to the user.
 * When introducing yourself, provide a brief description of what your purpose is.
-* Your capabilities are facilitated by the functions/tools you have been given.
 * Tell the user if you don't support a capability. Do NOT make up or provide false information or figures.
-* Do not expose any tools/functions or implementation details to the user.
-* Do not use figures or function call from preceding messages to generate responses.
-* The executor expects you to specify which tools it should call and in which order. If multiple functions need to be called, generate multiple tool calls.
+* Do not use figures or function call results from preceding messages to generate responses.
+* Be very precise with the numbers you parse from the tool call results, do not add or remove any digits.
 """,
         }
 
@@ -113,33 +113,30 @@ You must follow the following instructions:
         tools = self.env.get_tool_registry().get_all_tool_definitions()
 
         self.env.add_system_log(
-            f"Checking whether tool calls are needed: \n Registered Tools: {[t['function']['name'] for t in tools]}",
+            f"Checking whether tool calls are needed from one of: {[t['function']['name'] for t in tools]}",
             logging.DEBUG,
         )
 
         user_query = self.env.get_last_message()
-        tools_completion = self.env.completion_and_get_tools_calls(
-            [prompt, *ALL_FEWSHOT_SAMPLES, user_query], tools=tools
-        )
+
+        tools_plan = self._get_tool_call_plan(user_query)
         self.env.add_system_log(
-            f"Should call tools: {tools_completion.tool_calls}",
+            f"Should call tools: {tools_plan}",
             logging.DEBUG,
         )
 
-        if tools_completion.message:
-            self.env.add_reply(tools_completion.message)
-        if tools_completion.tool_calls and len(tools_completion.tool_calls) > 0:
-            tool_call_results = self._handle_tool_calls(tools_completion.tool_calls)
+        if tools_plan.message == "noop":
+            result = self.env.completion([prompt, user_query])
+
+        elif tools_plan.tool_calls and len(tools_plan.tool_calls) > 0:
+            tool_call_results = self._handle_tool_calls(tools_plan.tool_calls)
             if len(tool_call_results) > 0:
                 self.env.add_system_log(
                     f"Got tool call results: {tool_call_results}", logging.DEBUG
                 )
 
                 context = (
-                    [prompt]
-                    + self.env.list_messages()
-                    + ALL_FEWSHOT_SAMPLES
-                    + tool_call_results
+                    [prompt] + ALL_FEWSHOT_SAMPLES + [user_query] + tool_call_results
                 )
                 result = self.env.completion(context)
 
@@ -147,6 +144,10 @@ You must follow the following instructions:
                     f"Got completion for tool call with results: {result}. \n --- \n Context: {context}",
                     logging.DEBUG,
                 )
+        else:
+            self.env.add_reply(
+                "I had trouble understanding that. Could you please rephrase your question?"
+            )
 
         if result:
             self.env.add_reply(result)
@@ -167,6 +168,90 @@ You must follow the following instructions:
             "name": function_name,
             "content": json.dumps(value),
         }
+
+    def _get_tool_call_plan(self, user_query: str) -> SimpleNamespace:
+        """
+        Run a completion against the LLM to get a plan of action for the tool calls
+        """
+        prompt = {
+            "role": "system",
+            "content": """
+You are a Tool Planner for Divvy, a crypto financial assistant.
+Your job is to analyze the user's request and decide which tools should be called to fulfill it.
+You will NOT generate any friendly language or explanations for the user. Your only job is to return a list of tool calls based on the user's intent.
+
+-Rules-
+1. If no tool call is needed, return the string "noop".
+2. Your capabilities are facilitated by the functions/tools you have been given. Do not make up any tools.
+3. Only call tools needed to fulfill the request — no more, no less.
+4. If multiple steps need to be taken to fulfill the request, generate multiple tool calls and in the correct order.
+5. Be very precise with the numbers you parse from the tool call args, do not add or remove any digits.
+6. You must return structured tool call results in the LLM's native format. Do not use the format from the examples below.
+
+-Examples-
+
+--Example 1--
+User: "What is my NEAR account balance?"
+Output:
+{
+    "id": "example_msg_1",
+    "role": "example_assistant",
+    "content": "",
+    "tool_calls": [
+        {
+            "id": "call_1",
+            "name": "get_near_account_balance",
+            "arguments": {},
+        },
+    ],
+}
+
+--Example 2--
+User: "Show me my balance and fetch token market prices"
+Output:
+{
+    "id": "example_msg_2",
+    "role": "example_assistant",
+    "content": "",
+    "tool_calls": [
+        {
+            "id": "call_1",
+            "name": "get_near_account_balance",
+            "arguments": {},
+        },
+         {
+            "id": "call_2",
+            "name": "fetch_token_prices",
+            "arguments": {},
+        },
+    ],
+}
+
+--Example 3--
+User: "How can I realize my allowance goal?" OR "What swaps would you recommend?" OR "Which tokens should I swap?" OR "How do I reach my goal?"
+Output:
+{
+    "id": "example_msg_3",
+    "role": "example_assistant",
+    "content": "",
+    "tool_calls": [
+        {
+            "id": "call_1",
+            "name": "recommend_token_swaps",
+            "arguments": {},
+        },
+    ],
+}
+
+--Example 4--
+User: "Hello."
+Output: "noop"
+""",
+        }
+        tools = self.env.get_tool_registry().get_all_tool_definitions()
+        return self.env.completion_and_get_tools_calls(
+            [prompt, user_query], tools=tools
+        )
 
     def _get_tool_name(self) -> str:
         """Return the function name of the calling function as the tool name"""
@@ -272,8 +357,9 @@ You must follow the following instructions:
     ) -> typing.List[typing.Dict]:
         """
         Execute the tool calls and return a result for the LLM to process.
-        This is designed after Environment._handle_tool_calls which we don't use because it doesn't expose the tool
-        call results to us yet we need to pass them to the LLM for further processing.
+        This is designed after nearai.agents.environment.Environment._handle_tool_calls
+        which we don't use because it doesn't expose the tool call results to us
+        yet we need to pass them to the LLM for further processing.
         """
         results = []
         for tool_call in tool_calls:
@@ -285,17 +371,31 @@ You must follow the following instructions:
                 )
                 continue
             args = json.loads(tool_call.function.arguments)
-            # TODO: wrap in a try/except
-            results.append(
-                self._to_function_response(
-                    tool_call.id, tool_call.function.name, tool(**args)
+
+            try:
+                results.append(
+                    self._to_function_response(
+                        tool_call.id, tool_call.function.name, tool(**args)
+                    )
                 )
-            )
+            except Exception as e:
+                e_tback = "".join(traceback.format_exception(e))
+                error_message = (
+                    f"Error calling tool {tool_call.function.name}: {e_tback}"
+                )
+                self.env.add_system_log(error_message, level=logging.ERROR)
+                results.append(
+                    self._to_function_response(
+                        tool_call.id,
+                        tool_call.function.name,
+                        "Tell the user a server error occurred while processing the request and to try again later.",
+                    )
+                )
         return results
 
     def recommend_token_swaps(self) -> typing.List[typing.Dict]:
         """
-        Help the user achieve their allowance goal by generating personalized token swap recommendations.
+        Help the user achieve their goals (allowance, growth) by generating personalized token swap recommendations.
         """
         # Log allowance goals
         self.env.add_system_log(
@@ -333,6 +433,7 @@ You must follow the following instructions:
             self.env.add_reply(
                 f"Saved your NEAR account ID: {self.near_account_id}",
             )
+            return f"Successfully set the NEAR account ID to {self.near_account_id}"
         else:
             self.env.add_reply(
                 "Please provide a valid NEAR account ID.",
@@ -372,6 +473,7 @@ You must follow the following instructions:
             self.env.add_reply(
                 f"Saved your {type_} goal: {goal}",
             )
+            return f"Successfully saved your {type_} goal: {goal}"
         else:
             self.env.add_reply(
                 "Please provide a valid goal amount and specify whether it's a growth or allowance goal.",
