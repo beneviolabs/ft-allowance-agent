@@ -107,9 +107,10 @@ Format:
 
 Your allowance and growth goals must first be set.  Note: there are currently a harded coded quantity of BTC, SOL, NEAR, and ETH tokens that will be used to suggest quantities of tokens to swap.
 
- -> recommend token swaps to realize my allowance goal
-<- Assistant: Considering your options with a preference for holding BTC...
-Assistant: I can suggest a token swap to help you achieve your allowance goal. Based on your current portfolio and market conditions, I recommend swapping a portion of your NEAR for a stablecoin, such as USDT. This swap would allow you to realize a gain of approximately 29.96 NEAR, which is equivalent to your targe
+>
+    -> recommend token swaps to realize my allowance goal
+    <- Assistant: Considering your options with a preference for holding BTC...
+    Assistant: I can suggest a token swap to help you achieve your allowance goal. Based on your current portfolio and market conditions, I recommend swapping a portion of your NEAR for a stablecoin, such as USDT. This swap would allow you to realize a gain of approximately 29.96 NEAR, which is equivalent to your targe
 
 TODO - fix the LLMs interpretation of the recommended swap results. Here's an example of when the LLM mispresented the quantities and types of tokens which were calculated:
 

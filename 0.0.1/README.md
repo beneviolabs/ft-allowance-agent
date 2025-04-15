@@ -78,7 +78,7 @@ export AGENT_SECRET_KEY="<secret-key-from-previous-step>"
 - Add logs to the nearai library functions like completion_and_get_tools_calls() and completions()
 
 ### The bot is hallucinating
-- Check the prompt construction. Check how many messages are being passed in context
+- Check the prompt construction. Check how many messages are being passed in the context and whether anything in them could be inducing hallucinations.
 - Ensure you're not using `llama-3p3-70b-instruct` model. It doesn't seem to work well with nearai and returns responses
 as _assistant_ messages instead of tool calls.
 - If there was a tool call, check its docstring. Only the first line is added to the tool description, the rest of the lines are parsed as args.
