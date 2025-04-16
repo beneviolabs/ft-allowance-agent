@@ -6,6 +6,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 0.0.1/src
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +26,6 @@ jobs:
 
       - name: Build Rust code
         run: |
-          cd 0.0.1/src
           rustup component add rust-src
           chmod +x scripts/build.sh
           ./scripts/build.sh
