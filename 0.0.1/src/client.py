@@ -1,16 +1,14 @@
-from datetime import datetime, timedelta
-import requests
-import logging
-from typing import Optional
-import aiohttp
-
-from src.models import MpcKey, Intent, IntentActions, PublicKey, SignatureRequest
-from py_near.account import Account
-from dotenv import load_dotenv
-import os
 import base64
-import base58
 import json
+import logging
+import os
+from typing import Optional
+
+import aiohttp
+import requests
+from dotenv import load_dotenv
+from py_near.account import Account
+from src.models import Intent, IntentActions, MpcKey, PublicKey, SignatureRequest
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +277,7 @@ class NearMpcClient:
             for idx, receipt in enumerate(result.receipt_outcome):
                 logger.info(f"Receipt Outcome {idx}:")
                 logger.info(f"  Status: {receipt.status}")
-                logger.info(f"  Outcome:")
+                logger.info("  Outcome:")
                 logger.info(f"    Logs: {receipt.logs}")
                 logger.info(f"    Receipt IDs: {receipt.receipt_ids}")
 

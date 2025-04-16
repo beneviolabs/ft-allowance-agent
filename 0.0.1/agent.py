@@ -1,18 +1,19 @@
-import logging
 import inspect
 import json
+import logging
 import re
-from src.client import NearMpcClient
-from src.models import SignatureRequest, MpcKey, Intent
 import typing
-from nearai.agents.environment import Environment, ChatCompletionMessageToolCall
+
+from src.client import NearMpcClient
 from src.utils import (
     fetch_coinbase,
     fetch_coingecko,
-    get_recommended_token_allocations,
     get_near_account_balance,
+    get_recommended_token_allocations,
     yocto_to_near,
 )
+
+from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
 
 NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
@@ -320,7 +321,7 @@ You must follow the following instructions:
 
         if not self.recommended_tokens:
             self.env.add_reply(
-                f"Considering your options with a preference for holding BTC..."
+                "Considering your options with a preference for holding BTC..."
             )
             self.recommended_tokens = get_recommended_token_allocations(
                 int(self.allowance_goal)
@@ -415,7 +416,7 @@ You must follow the following instructions:
         # Ensure we have recommended tokens
         if not self.recommended_tokens:
             self.env.add_system_log(
-                f"Recommended tokens not found. Fetching swap options now...",
+                "Recommended tokens not found. Fetching swap options now...",
                 logging.DEBUG,
             )
             self.recommend_token_allocations_to_swap_for_stablecoins()
