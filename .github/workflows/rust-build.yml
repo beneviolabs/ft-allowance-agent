@@ -2,6 +2,10 @@ name: rust-build
 
 on:
   push:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
 
 jobs:
   build:
@@ -19,6 +23,7 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt
 
+        # TODO: fix miss cause could not find `Cargo.toml` in `/home/runner/work/ft-allowance-agent/ft-allowance-agent` or any parent directory
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
