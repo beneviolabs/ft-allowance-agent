@@ -14,6 +14,7 @@ jobs:
         with:
           toolchain: nightly
           targets: wasm32-unknown-unknown
+          components: rustfmt
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -23,5 +24,6 @@ jobs:
       - name: Build Rust code
         run: |
           cd 0.0.1/src
+          cargo
           chmod +x scripts/build.sh
           ./scripts/build.sh
