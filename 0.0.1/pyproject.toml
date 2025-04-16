@@ -1,0 +1,24 @@
+[tool.ruff]
+
+# Same as Black.
+line-length = 88
+
+# Assume Python 3.11
+target-version = "py311"
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with 4 spaces
+indent-style = "space"
+
+[tool.ruff.lint]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Enable pycodestyle ('E'), pyflakes ('F'), and isort ('I') rules
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nearai"]
