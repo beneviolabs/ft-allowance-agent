@@ -2,10 +2,6 @@ name: rust-build
 
 on:
   push:
-    paths:
-      - '**/*.rs'
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
 
 jobs:
   build:
