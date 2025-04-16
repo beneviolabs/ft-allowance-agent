@@ -1,6 +1,6 @@
-import logging
 import inspect
 import json
+import logging
 import re
 import traceback
 
@@ -10,14 +10,17 @@ from src.client import NearMpcClient
 from src.models import SignatureRequest, MpcKey, Intent
 from src.fewshots import ALL_FEWSHOT_SAMPLES
 import typing
-from nearai.agents.environment import Environment, ChatCompletionMessageToolCall
+
+from src.client import NearMpcClient
 from src.utils import (
     fetch_coinbase,
     fetch_coingecko,
-    get_recommended_token_allocations,
     get_near_account_balance,
+    get_recommended_token_allocations,
     yocto_to_near,
 )
+
+from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
 
 NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
@@ -26,7 +29,6 @@ DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
 
 
 class Agent:
-
     def __init__(self, env: Environment):
         self.env = env
         self._allowance_goal = 400
@@ -409,7 +411,7 @@ Output: "noop"
 
         if self.recommended_tokens is None:
             self.env.add_reply(
-                f"Considering your options with a preference for holding BTC..."
+                "Considering your options with a preference for holding BTC..."
             )
             self.recommended_tokens = get_recommended_token_allocations(
                 self.allowance_goal
@@ -506,7 +508,7 @@ Output: "noop"
         # Ensure we have recommended tokens
         if not self.recommended_tokens:
             self.env.add_system_log(
-                f"Recommended tokens not found. Fetching swap options now...",
+                "Recommended tokens not found. Fetching swap options now...",
                 logging.DEBUG,
             )
             self.recommend_token_allocations_to_swap_for_stablecoins()

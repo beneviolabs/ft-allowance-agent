@@ -1,0 +1,36 @@
+name: rust-build
+
+on:
+  push:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 0.0.1/src
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          targets: wasm32-unknown-unknown
+          components: rustfmt
+
+        # TODO: fix miss cause could not find `Cargo.toml` in `/home/runner/work/ft-allowance-agent/ft-allowance-agent` or any parent directory
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build Rust code
+        run: |
+          rustup component add rust-src
+          chmod +x scripts/build.sh
+          ./scripts/build.sh
