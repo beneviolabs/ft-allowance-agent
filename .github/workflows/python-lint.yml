@@ -28,3 +28,5 @@ jobs:
           ruff check --config 0.0.1/pyproject.toml .
           # Run Ruff formatter
           ruff format --config 0.0.1/pyproject.toml . --check
+
+      # TODO: Introduce mypy or other static type checker eventually
