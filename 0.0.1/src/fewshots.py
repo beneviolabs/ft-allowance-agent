@@ -78,7 +78,7 @@ RECOMMEND_SWAP_SAMPLE_1 = [
     {
         "id": "example_msg_3",
         "content": """
-To achieve your growth goal of 300, I recommend the following token swaps:
+To achieve your growth goal of 300, I recommend the following token swaps for USDC/USDT:
 * BTC: 0.08743453647560796
 * ETH: 0.19493149713493173
 * SOL: 0.13243573584689358

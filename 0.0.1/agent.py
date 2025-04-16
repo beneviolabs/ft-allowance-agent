@@ -27,7 +27,7 @@ DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
 class Agent:
     def __init__(self, env: Environment):
         self.env = env
-        self._allowance_goal = 400
+        self._allowance_goal = None
         self.prices = None
         self.recommended_tokens = None
         self._near_account_id = None
@@ -255,7 +255,7 @@ Output: "noop"
         """Return the function name of the calling function as the tool name"""
         return inspect.stack()[1][3]
 
-    def get_near_account_id(self) -> typing.List[typing.Dict]:
+    def get_near_account_id(self) -> str | None:
         """Get the NEAR account ID of the user"""
         if not self.near_account_id:
             self.env.add_reply(
@@ -268,7 +268,7 @@ Output: "noop"
 
         return self.near_account_id
 
-    def get_near_account_balance(self) -> typing.List[typing.Dict]:
+    def get_near_account_balance(self) -> str | float:
         """
         Fetch and return the NEAR token balance for a user's account.
 
@@ -391,15 +391,10 @@ Output: "noop"
                 )
         return results
 
-    def recommend_token_swaps(self) -> typing.List[typing.Dict]:
+    def recommend_token_swaps(self) -> str | None:
         """
         Help the user achieve their goals (allowance, growth) by generating personalized token swap recommendations.
         """
-        # Log allowance goals
-        self.env.add_system_log(
-            f"Current allowance goal: {self.allowance_goal}", logging.DEBUG
-        )
-
         if self.allowance_goal is None:
             return (
                 "The user hasn't set an allowance goal yet. Prompt them to provide one."
@@ -424,7 +419,7 @@ Output: "noop"
             f"The user should swap the following tokens to achieve their allowance goal of {self.allowance_goal}: {result}",
         )
 
-    def save_near_account_id(self, near_id: str) -> typing.List[typing.Dict]:
+    def save_near_account_id(self, near_id: str) -> str | None:
         """Save the Near account ID the user provides"""
         if near_id and NEAR_ID_REGEX.match(near_id):
             self._persist_near_id(near_id)
@@ -437,7 +432,7 @@ Output: "noop"
                 "Please provide a valid NEAR account ID.",
             )
 
-    def save_goal(self, goal: int, type_: DivvyGoalType) -> typing.List[typing.Dict]:
+    def save_goal(self, goal: int, type_: DivvyGoalType) -> str | None:
         """Save a portfolio goal (growth or allowance) specified by the user.
 
         This function should be called when:
