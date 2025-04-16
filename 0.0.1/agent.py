@@ -3,15 +3,11 @@ import json
 import logging
 import re
 import traceback
-
+import typing
 from types import SimpleNamespace
 
 from src.client import NearMpcClient
-from src.models import SignatureRequest, MpcKey, Intent
 from src.fewshots import ALL_FEWSHOT_SAMPLES
-import typing
-
-from src.client import NearMpcClient
 from src.utils import (
     fetch_coinbase,
     fetch_coingecko,
