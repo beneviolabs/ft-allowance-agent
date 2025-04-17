@@ -9,7 +9,6 @@ from typing import Dict, List, NewType, Tuple, TypedDict, Union
 
 import aiohttp
 import base58
-import near_api
 import requests
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from dotenv import load_dotenv
