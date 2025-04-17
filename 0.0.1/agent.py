@@ -1,18 +1,19 @@
-import logging
 import inspect
 import json
+import logging
 import re
-from src.client import NearMpcClient
-from src.models import SignatureRequest, MpcKey, Intent
 import typing
-from nearai.agents.environment import Environment, ChatCompletionMessageToolCall
+
+from src.client import NearMpcClient
 from src.utils import (
     fetch_coinbase,
     fetch_coingecko,
-    get_recommended_token_allocations,
     get_near_account_balance,
+    get_recommended_token_allocations,
     yocto_to_near,
 )
+
+from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
 
 NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
@@ -21,7 +22,6 @@ DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
 
 
 class Agent:
-
     def __init__(self, env: Environment):
         self.env = env
         self._allowance_goal = None
@@ -32,9 +32,7 @@ class Agent:
         self.near_account_balance = None
         self._client = NearMpcClient(network=env.env_vars["network"])
         tool_registry = self.env.get_tool_registry()
-        tool_registry.register_tool(
-            self.recommend_token_swaps
-        )
+        tool_registry.register_tool(self.recommend_token_swaps)
         tool_registry.register_tool(self.get_near_account_id)
         tool_registry.register_tool(self.save_near_account_id)
         tool_registry.register_tool(self.get_goals)
@@ -53,7 +51,8 @@ class Agent:
         if self._allowance_goal is None:
             stored_goal = self.env.read_file("allowance_goal.txt")
             self.env.add_system_log(
-                f"Found stored allowance goal: {stored_goal}", logging.DEBUG)
+                f"Found stored allowance goal: {stored_goal}", logging.DEBUG
+            )
             if stored_goal:
                 self._allowance_goal = int(stored_goal)
         return self._allowance_goal
@@ -63,7 +62,8 @@ class Agent:
         if self._growth_goal is None:
             stored_goal = self.env.read_file("growth_goal.txt")
             self.env.add_system_log(
-                f"Found stored growth goal: {stored_goal}", logging.DEBUG)
+                f"Found stored growth goal: {stored_goal}", logging.DEBUG
+            )
             if stored_goal:
                 self._growth_goal = int(stored_goal)
         return self._growth_goal
@@ -111,15 +111,13 @@ You must follow the following instructions:
         if tools_completion.message:
             self.env.add_reply(tools_completion.message)
         if tools_completion.tool_calls and len(tools_completion.tool_calls) > 0:
-            tool_call_results = self._handle_tool_calls(
-                tools_completion.tool_calls)
+            tool_call_results = self._handle_tool_calls(tools_completion.tool_calls)
             if len(tool_call_results) > 0:
                 self.env.add_system_log(
                     f"Got tool call results: {tool_call_results}", logging.DEBUG
                 )
 
-                context = [prompt] + self.env.list_messages() + \
-                    tool_call_results
+                context = [prompt] + self.env.list_messages() + tool_call_results
                 result = self.env.completion(context)
 
                 self.env.add_system_log(
@@ -158,8 +156,7 @@ You must follow the following instructions:
                 message_type="system",
             )
 
-        responses.append(self._to_function_response(
-            tool_name, self.near_account_id))
+        responses.append(self._to_function_response(tool_name, self.near_account_id))
         return responses
 
     def get_near_account_balance(self) -> typing.List[typing.Dict]:
@@ -197,8 +194,7 @@ You must follow the following instructions:
             balance = get_near_account_balance(self.near_account_id)
             if balance:
                 self.near_account_balance = yocto_to_near(balance)
-            self.env.add_reply("Found the user's balance",
-                               message_type="system")
+            self.env.add_reply("Found the user's balance", message_type="system")
         else:
             self.env.add_reply(
                 "We couldn't fetch a balance because no NEAR account ID is set. What is your near account ID?",
@@ -217,21 +213,17 @@ You must follow the following instructions:
         )
         near_price = fetch_coinbase("near")
         near_price = (
-            fetch_coingecko("near") if isinstance(
-                near_price, bool) else near_price
+            fetch_coingecko("near") if isinstance(near_price, bool) else near_price
         )
 
         btc_price = fetch_coinbase("btc")
-        btc_price = fetch_coingecko("btc") if isinstance(
-            btc_price, bool) else btc_price
+        btc_price = fetch_coingecko("btc") if isinstance(btc_price, bool) else btc_price
 
         eth_price = fetch_coinbase("eth")
-        eth_price = fetch_coingecko("eth") if isinstance(
-            eth_price, bool) else eth_price
+        eth_price = fetch_coingecko("eth") if isinstance(eth_price, bool) else eth_price
 
         sol_price = fetch_coinbase("sol")
-        sol_price = fetch_coingecko("sol") if isinstance(
-            sol_price, bool) else sol_price
+        sol_price = fetch_coingecko("sol") if isinstance(sol_price, bool) else sol_price
         self.prices = [
             "NEAR:",
             near_price,
@@ -263,8 +255,7 @@ You must follow the following instructions:
                 )
             goals[type_] = goal
 
-        responses.append(self._to_function_response(
-            self._get_tool_name(), goals))
+        responses.append(self._to_function_response(self._get_tool_name(), goals))
         return responses
 
     def _handle_tool_calls(
@@ -289,38 +280,37 @@ You must follow the following instructions:
 
     def recommend_token_swaps(self) -> typing.List[typing.Dict]:
         """
-            Generate token swap recommendations to achieve the user's allowance goal in stablecoins.
+        Generate token swap recommendations to achieve the user's allowance goal in stablecoins.
 
-            This function should be called when:
-            1. The user has set an allowance goal
-            2. The user requests advice on which tokens to swap
+        This function should be called when:
+        1. The user has set an allowance goal
+        2. The user requests advice on which tokens to swap
 
-            The function will:
-            1. Consider the user's portfolio composition
-            2. Prioritize maximizing BTC holdings
-            3. Recommend optimal token quantities to swap into USDC/USDT
-            4. Preserve long-term growth potential while meeting allowance needs
+        The function will:
+        1. Consider the user's portfolio composition
+        2. Prioritize maximizing BTC holdings
+        3. Recommend optimal token quantities to swap into USDC/USDT
+        4. Preserve long-term growth potential while meeting allowance needs
 
-            Returns:
-                List[Dict]: A list containing a single function response with recommended swaps:
-                [{
-                    'token': str,           # Token symbol (e.g., 'NEAR', 'SOL')
-                    'amount': float,        # Amount of tokens to swap
-                }]
+        Returns:
+            List[Dict]: A list containing a single function response with recommended swaps:
+            [{
+                'token': str,           # Token symbol (e.g., 'NEAR', 'SOL')
+                'amount': float,        # Amount of tokens to swap
+            }]
 
-            Example response:
-                [{'role': 'function',
-                'name': 'recommend_token_swaps',
-                'content': '{'NEAR': 99.04298327119977, 'SOL': 1.0781411622775472, 'ETH': 0.07348127071321557, 'BTC': 0.02280692838780696}'
-                }]
+        Example response:
+            [{'role': 'function',
+            'name': 'recommend_token_swaps',
+            'content': '{'NEAR': 99.04298327119977, 'SOL': 1.0781411622775472, 'ETH': 0.07348127071321557, 'BTC': 0.02280692838780696}'
+            }]
         """
 
         tool_name = self._get_tool_name()
 
         # Log allowance goals
         self.env.add_system_log(
-            f"Current allowance goal: {self.allowance_goal}",
-            logging.DEBUG
+            f"Current allowance goal: {self.allowance_goal}", logging.DEBUG
         )
 
         if self.allowance_goal is None:
@@ -331,7 +321,7 @@ You must follow the following instructions:
 
         if not self.recommended_tokens:
             self.env.add_reply(
-                f"Considering your options with a preference for holding BTC..."
+                "Considering your options with a preference for holding BTC..."
             )
             self.recommended_tokens = get_recommended_token_allocations(
                 int(self.allowance_goal)
@@ -340,7 +330,7 @@ You must follow the following instructions:
         if self.recommended_tokens:
             self.env.add_system_log(
                 f"Recommended token swaps: {json.dumps(self.recommended_tokens)}",
-                logging.DEBUG
+                logging.DEBUG,
             )
         return [self._to_function_response(tool_name, self.recommended_tokens or [])]
 
@@ -386,7 +376,7 @@ You must follow the following instructions:
         - Goals must be positive integers
         - Invalid inputs will prompt user for clarification
         - When multiple goals are provided, process each separately
-    """
+        """
         responses = []
         if type_ in DIVVY_GOALS and goal > 0:
             self._persist_goal(goal, type_)
@@ -408,10 +398,7 @@ You must follow the following instructions:
         """Persist the growth or allowance goal to storage and set it to the class instance variable"""
         self.env.write_file(f"{type_}_goal.txt", str(goal))
         if type_ == "allowance":
-            self.env.add_system_log(
-                f"Persisted {type_} goal: {goal}",
-                logging.DEBUG
-            )
+            self.env.add_system_log(f"Persisted {type_} goal: {goal}", logging.DEBUG)
             self._allowance_goal = goal
         if type_ == "growth":
             self._growth_goal = goal
@@ -429,8 +416,8 @@ You must follow the following instructions:
         # Ensure we have recommended tokens
         if not self.recommended_tokens:
             self.env.add_system_log(
-                f"Recommended tokens not found. Fetching swap options now...",
-                logging.DEBUG
+                "Recommended tokens not found. Fetching swap options now...",
+                logging.DEBUG,
             )
             self.recommend_token_allocations_to_swap_for_stablecoins()
 
@@ -466,6 +453,6 @@ You must follow the following instructions:
         # what should be our return value?
 
 
-if globals().get('env', None):
-    agent = Agent(globals().get('env', {}))
+if globals().get("env", None):
+    agent = Agent(globals().get("env", {}))
     agent.run()
