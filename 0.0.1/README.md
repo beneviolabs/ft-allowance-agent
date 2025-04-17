@@ -68,6 +68,8 @@ This is the Python source code.
 
 1. If you wanna hide the bot, set the show_entry field in metadata.json file to false and run `nearai registry upload --bump` again to set the listing to private.
 
+1. If there is a dependency that needs to be updated, we need to submit a pull request to the nearai repo to update their aws_runner dependencies over [here](https://github.com/nearai/nearai/blob/main/aws_runner/frameworks/requirements-standard.txt).
+
 
 ### Troubleshooting deployments and the deployed running application
 
