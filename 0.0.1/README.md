@@ -1,4 +1,4 @@
-### setup
+## setup
 
 1. Create a wallet if you don't have one via [Bitte](https://wallet.bitte.ai)
 
@@ -52,3 +52,15 @@
    ```
 
    Other SDK logs can be found at `/tmp/nearai-agent-runner/ptke.near/ft-allowance-agent/0.0.1/system_log.txt`.
+
+## Deploying
+
+Run
+
+`nearai agent interactive ~/.nearai/registry/ptke.near/my-ft-sandbox/0.0.1 --local --env_vars='{"DEBUG":true}`
+
+### Troubleshooting deployments
+
+- Add `DEBUG=true` to the env vars and check the `ℹShow system logs` checkbox that sits left to the send message button. This will show you stacktraces.
+
+- Deploy doesn't show up: If a newly deployed version doesn't show up on the UI Check the metadata.json, if you got any fields your new version might not be listed.

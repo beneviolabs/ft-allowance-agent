@@ -1,7 +1,7 @@
 {
-  "name": "ft-allowance-agent",
-  "version": "0.0.1",
-  "description": "Automates the swap of fungible tokens to USDC or USDT, and the transfer of the stablecoins to a recipient address only once a target amount of growth in an account holder's assets has been reached.  Given a near account address, a full access key, an optional transfer recipient Near address, a set of tokens, and a USD growth target for the set of tokens,  a non-agent process watches for the portfolio’s growth target to be met, and if satisfied triggers this agent with the token addresses and amounts to be swapped for USDC or USDT",
+  "name": "test-app",
+  "version": "0.0.20",
+  "description": "testing bot",
   "category": "agent",
   "tags": [
     "trigger",
@@ -20,14 +20,14 @@
       "swap_allocations_worker": "https://ft-allowance-allocations.hello-d1f.workers.dev/"
     },
     "agent": {
+      "framework": "standard",
       "defaults": {
-        "model": "llama-v3p1-70b-instruct",
+        "model": "llama-v3p1-405B-instruct",
         "model_provider": "fireworks",
         "model_temperature": 0.5,
         "model_max_tokens": 16384
       }
-    },
-    "display_name": "Token Allowance Agent"
+    }
   },
   "show_entry": true
 }
