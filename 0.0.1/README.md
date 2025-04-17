@@ -1,5 +1,7 @@
 ## setup
 
+This is the Python source code.
+
 1. Create a wallet if you don't have one via [Bitte](https://wallet.bitte.ai)
 
 1. Sign up on [near.ai](https://app.near.ai/) with your Bitte wallet.
@@ -55,12 +57,22 @@
 
 ## Deploying
 
-Run
+1. Ensure you have an empty app called `test-app` in your Near account. If not, use nearai CLI to create and deploy it.
 
-`nearai agent interactive ~/.nearai/registry/ptke.near/my-ft-sandbox/0.0.1 --local --env_vars='{"DEBUG":true}`
+1. Ensure `show_entry` is set to true and run the following from the 0.0.1 directory
+   ```
+   nearai registry upload --bump
+   ```
 
-### Troubleshooting deployments
+1. Go to your nearai dashboard and find your new deployment
 
-- Add `DEBUG=true` to the env vars and check the `ℹShow system logs` checkbox that sits left to the send message button. This will show you stacktraces.
+1. If you wanna hide the bot, set the show_entry field in metadata.json file to false and run `nearai registry upload --bump` again to set the listing to private.
 
-- Deploy doesn't show up: If a newly deployed version doesn't show up on the UI Check the metadata.json, if you got any fields your new version might not be listed.
+
+### Troubleshooting deployments and the deployed running application
+
+- Add `DEBUG=true` to the env vars and check the `ℹShow system logs` checkbox that sits left to the send message button. This will show you stacktraces and debug level logs.
+
+- Deploy doesn't show up: If a newly deployed version doesn't show up on the UI check the metadata.json. if you got any fields wrong or missing your new version might not be listed. Also make sure `show_entry` is set to true.
+
+- If the description field is too long you will get a HTTP 500 error.
