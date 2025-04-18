@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 
 @dataclass
@@ -71,6 +71,7 @@ class SignMessageSignatureRequest(DictMixin):
     account_pk_for_mpc: str
     method_name: Optional[str] = None
     gas: str = "50000000000000"
+
 
 @dataclass
 class QuoteRequest:
