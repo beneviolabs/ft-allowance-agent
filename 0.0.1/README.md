@@ -68,15 +68,15 @@ This is the Python source code.
 
 1. Go to your nearai dashboard and find your new deployment
 
-1. If you wanna hide the bot, set the show_entry field in metadata.json file to _false_ and run `nearai registry upload --bump` again to set the listing to private.
+1. If you wanna hide the agent you deployed, set the show_entry field in metadata.json file to _false_ and run `nearai registry upload --bump` again to set the listing to private this way it won't show up in the dashboard search. It will still be accessible if you have a link to it.
 
 1. If there is a dependency that needs to be updated, we need to submit a pull request to the nearai repo to update their aws_runner dependencies over [here](https://github.com/nearai/nearai/blob/main/aws_runner/frameworks/requirements-standard.txt).
 
 ### Setting secrets
 
-- You can set secrets in the nearai dashboard. They will be available in the env vars of the running agent. When set there, they will be considered agent secrets and will be available to anyone running your agent.
+- You can set secrets in the nearai dashboard. They will be available in the env vars of the running agent. When set there, they will be considered agent secrets and will be usable but not visible by anyone running your agent.
 
-   So for example if you are user exampleuser.near with agent foobar, any secret you set for foobar will be usable but not visible to otheruser2.near who uses your agent.
+   So for example if you are user exampleuser.near with agent foobar, any secret you set for foobar will be present (but not visible) when otheruser2.near uses your agent.
 
 
 ### Troubleshooting deployments and the deployed running application
@@ -85,4 +85,4 @@ This is the Python source code.
 
 - Deploy doesn't show up: If a newly deployed version doesn't show up on the UI check the metadata.json. if you got any fields wrong or missing your new version might not be listed. Also make sure `show_entry` is set to true.
 
-- If the description field is too long you will get a HTTP 500 error.
+- If the description field is too long you will get a HTTP 500 error. Special chars also cause this.
