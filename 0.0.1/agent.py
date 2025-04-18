@@ -18,10 +18,11 @@ from src.utils import (
     yocto_to_near,
 )
 
-NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
 DIVVY_GOALS = set(["allowance", "growth"])
 DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
+
+NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
 
 class Agent:
@@ -448,11 +449,11 @@ Output: "noop"
 
         # Ensure we have account ID
         if not self.near_account_id:
-            self.find_near_account_id()
+            return "Unable to fetch balance because user hasn't provided NEAR account ID. Ask them to provide it."
 
         # Ensure we have an allowance goal
         if not self.allowance_goal:
-            self.get_allowance_goal()
+            return "The user needs their allowance goal set to execute a swap. Prompt them to provide one."
 
         # Ensure we have recommended tokens
         if not self.recommended_tokens:
