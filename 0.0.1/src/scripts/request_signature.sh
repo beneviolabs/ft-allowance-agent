@@ -25,7 +25,7 @@ echo "Using agent ID: $AGENT_ID with command: $COMMAND"
 echo "calling https://rpc.$NEAR_ENV.fastnear.com"
 
 # Fetch the current nonce from the mpc public key
-NONCE=$(curl -s -X POST https://rpc.$NEAR_ENV.fastnear.com \
+RESPONSE=$(curl -s -X POST https://rpc.$NEAR_ENV.fastnear.com \
     -H 'Content-Type: application/json' \
     -d '{
         "jsonrpc": "2.0",
@@ -37,10 +37,11 @@ NONCE=$(curl -s -X POST https://rpc.$NEAR_ENV.fastnear.com \
             "account_id": "'"$AGENT_PROXY_ACCOUNT"'",
             "public_key": "'"$MPC_DERIVED_PK"'"
         }
-    }' | grep -o '"nonce":[0-9]*' | grep -o '[0-9]*')
+    }')
+NONCE=$( echo $RESPONSE | grep -o '"nonce":[0-9]*' | grep -o '[0-9]*')
 
 if [ -z "$NONCE" ]; then
-    echo "Failed to extract current nonce from RPC response"
+    echo "Failed to extract current nonce from RPC response: $RESPONSE"
     exit -1
 fi
 

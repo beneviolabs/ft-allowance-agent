@@ -21,7 +21,7 @@
     },
     "agent": {
       "defaults": {
-        "model": "llama-v3p1-70b-instruct",
+        "model": "llama-3p1-405b-instruct",
         "model_provider": "fireworks",
         "model_temperature": 0.5,
         "model_max_tokens": 16384

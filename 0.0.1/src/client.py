@@ -1,23 +1,31 @@
-from datetime import datetime, timedelta, timezone
-import requests
-import logging
-from typing import Optional, Dict, List
-from decimal import Decimal
-import aiohttp
-
-from .utils import get_usdt_token_out_type, get_usdc_token_out_type
-from .models import MpcKey, Intent, IntentActions, OneClickQuote, PublicKey, MultiActionSignatureRequest, SignMessageSignatureRequest
-
-from py_near.account import Account
-from dotenv import load_dotenv
-import os
 import base64
-
 import json
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Dict, List, Optional
+
+import aiohttp
+import requests
+from dotenv import load_dotenv
+from py_near.account import Account
+
+from src.models import (
+    Intent,
+    IntentActions,
+    MpcKey,
+    MultiActionSignatureRequest,
+    OneClickQuote,
+    PublicKey,
+    SignMessageSignatureRequest,
+)
+from src.utils import get_usdc_token_out_type, get_usdt_token_out_type
 
 # Expose this logger config when testing these methods directly, without using the AI interface
-#from .logger_config import configure_logging
-#configure_logging()
+# from .logger_config import configure_logging
+# configure_logging()
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,31 +70,28 @@ class OneClickClient:
         recipient: str,
         dry: bool = True,
         slippage_tolerance: int = 100,
-        deadline: Optional[str] = None
+        deadline: Optional[str] = None,
     ) -> Optional[OneClickQuote]:
         """
-            Get quote for swapping tokens using 1click API
+        Get quote for swapping tokens using 1click API
 
-            Args:
-                token_in: Input token identifier (e.g. "nep141:wrap.near")
-                token_out: Output token identifier (e.g. "nep141:usdc.near")
-                amount_in: Amount of input token
-                dry: If True, returns quote without executing swap
-                slippage_tolerance: Maximum allowed slippage (default 1%)
-                refund_to: Address to refund to if swap fails
-                recipient: Address to receive swapped tokens
-                deadline: Timestamp when a refund will be triggered
+        Args:
+            token_in: Input token identifier (e.g. "nep141:wrap.near")
+            token_out: Output token identifier (e.g. "nep141:usdc.near")
+            amount_in: Amount of input token
+            dry: If True, returns quote without executing swap
+            slippage_tolerance: Maximum allowed slippage (default 1%)
+            refund_to: Address to refund to if swap fails
+            recipient: Address to receive swapped tokens
+            deadline: Timestamp when a refund will be triggered
         """
-        logger.debug(
-            f"Getting quote for {amount_in} {token_in} to {token_out}")
+        logger.debug(f"Getting quote for {amount_in} {token_in} to {token_out}")
 
         try:
             # Set deadline to 15 minutes from now if not provided
             if deadline is None:
-                future_time = datetime.now(
-                    timezone.utc) + timedelta(minutes=15)
-                deadline = future_time.strftime(
-                    '%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+                future_time = datetime.now(timezone.utc) + timedelta(minutes=15)
+                deadline = future_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
                 logger.debug(f"Generated deadline: {deadline}")
 
             payload = {
@@ -106,26 +111,23 @@ class OneClickClient:
                 "recipient": recipient,  # The format should match recipientType
                 "recipientType": "DESTINATION_CHAIN",
                 "deadline": deadline,
-                "referral": "benevio-labs.near"
+                "referral": "benevio-labs.near",
             }
             logger.debug(f"Sending quote request with payload: {payload}")
 
             session = await self._ensure_session()
-            async with session.post(
-                f"{self.BASE_URL}/quote",
-                json=payload
-            ) as response:
+            async with session.post(f"{self.BASE_URL}/quote", json=payload) as response:
                 if response.status in [200, 201]:
                     data = await response.json()
                     if not dry:
                         logger.info(
-                            f"Swap initiated with deposit address: {data.get('deposit_address')}")
+                            f"Swap initiated with deposit address: {data.get('deposit_address')}"
+                        )
 
                     return OneClickQuote(**data)
                 else:
                     error_body = await response.text()
-                    logger.error(
-                        f"Failed to get quote. Status code: {response.status}")
+                    logger.error(f"Failed to get quote. Status code: {response.status}")
                     logger.error(f"Failed to get quote: {error_body}")
                     return None
         except Exception as e:
@@ -162,7 +164,9 @@ class NearMpcClient:
         self.oneclickapi = OneClickClient()
         self.network = network
         self.rpc_url = f"https://rpc.{network}.fastnear.com"
-        self.mpc_signer = "v1.signer-prod.testnet" if network == "testnet" else "v1.signer"
+        self.mpc_signer = (
+            "v1.signer-prod.testnet" if network == "testnet" else "v1.signer"
+        )
         self._derived_key: Optional[str] = None
         self._account_public_key: Optional[PublicKey] = None
 
@@ -182,7 +186,7 @@ class NearMpcClient:
         # get stablecoin identifiers depending on the input token
         stablecoins = {
             "USDC": get_usdc_token_out_type(token_in),
-            "USDT": get_usdt_token_out_type(token_in)
+            "USDT": get_usdt_token_out_type(token_in),
         }
 
         for name, token_id in stablecoins.items():
@@ -201,15 +205,14 @@ class NearMpcClient:
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set"""
-        required_vars = [
-            'AGENT_SECRET_KEY',
-            'AGENT_ACCOUNT_ID'
-        ]
+        required_vars = ["AGENT_SECRET_KEY", "AGENT_ACCOUNT_ID"]
 
         missing_vars = [var for var in required_vars if not os.getenv(var)]
 
         if missing_vars:
-            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+            error_msg = (
+                f"Missing required environment variables: {', '.join(missing_vars)}"
+            )
             logger.error(error_msg)
             raise ValueError(error_msg)
 
@@ -223,10 +226,8 @@ class NearMpcClient:
                         "jsonrpc": "2.0",
                         "id": "benevio.dev",
                         "method": "block",
-                        "params": {
-                            "finality": "final"
-                        }
-                    }
+                        "params": {"finality": "final"},
+                    },
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -239,8 +240,7 @@ class NearMpcClient:
                         raise ValueError(error_msg)
 
         except Exception as e:
-            logger.error(
-                f"Failed to fetch block hash: {str(e)}", exc_info=True)
+            logger.error(f"Failed to fetch block hash: {str(e)}", exc_info=True)
             raise
 
     def derive_mpc_key(self, proxy_account_id: str) -> MpcKey:
@@ -255,11 +255,14 @@ class NearMpcClient:
                 "predecessor": proxy_account_id,
                 "path": pk,
             }
-            response = self._query_rpc("call_function", {
-                "method_name": "derived_public_key",
-                "account_id": self.mpc_signer,
-                "args_base64": base64.b64encode(json.dumps(args).encode()).decode(),
-            })
+            response = self._query_rpc(
+                "call_function",
+                {
+                    "method_name": "derived_public_key",
+                    "account_id": self.mpc_signer,
+                    "args_base64": base64.b64encode(json.dumps(args).encode()).decode(),
+                },
+            )
             self._derived_key = self._parse_view_result(response)
             logger.info(f"Successfully derived MPC key {self._derived_key}")
             return MpcKey(
@@ -277,8 +280,7 @@ class NearMpcClient:
                 permission = key["access_key"]["permission"]
                 public_key = key["public_key"]
 
-                if (permission == "FullAccess" and
-                        public_key.startswith("ed25519:")):
+                if permission == "FullAccess" and public_key.startswith("ed25519:"):
                     logger.info(f"Found full access key: {public_key}")
                     self._account_public_key = key["public_key"]
                     return self._account_public_key
@@ -293,8 +295,9 @@ class NearMpcClient:
     def _get_public_key(self, account_id: str) -> list[PublicKey]:
         """Returns public keys for a given account"""
         try:
-            response = self._query_rpc("view_access_key_list", {
-                                       "finality": "final", "account_id": account_id})
+            response = self._query_rpc(
+                "view_access_key_list", {"finality": "final", "account_id": account_id}
+            )
             if "keys" in response and len(response["keys"]) > 0:
                 return response["keys"]
             else:
@@ -310,13 +313,18 @@ class NearMpcClient:
             self.derive_mpc_key(proxy_account_id)
         try:
             logger.debug(f"Using derived key: {self._derived_key}")
-            response = self._query_rpc("view_access_key", {
-                                       "finality": "final", "account_id": proxy_account_id, "public_key": self._derived_key})
+            response = self._query_rpc(
+                "view_access_key",
+                {
+                    "finality": "final",
+                    "account_id": proxy_account_id,
+                    "public_key": self._derived_key,
+                },
+            )
             if "nonce" in response:
                 return str(response["nonce"] + 10)
             else:
-                raise ValueError(
-                    f"No nonce found for account {proxy_account_id}")
+                raise ValueError(f"No nonce found for account {proxy_account_id}")
         except Exception as e:
             logger.error(f"Failed to get next nonce: {str(e)}", exc_info=True)
             raise
@@ -352,36 +360,33 @@ class NearMpcClient:
                 nonce=str(nonce),
                 block_hash=block_hash,
                 mpc_signer_pk=self.mpc_signer_pk,
-                account_pk_for_mpc=self.account_pk_for_mpc
+                account_pk_for_mpc=self.account_pk_for_mpc,
             )
 
             self.env.add_system_log(
                 f"Requesting multi-action signature for contract {contract_id}",
-                logging.DEBUG
+                logging.DEBUG,
             )
 
             # Call proxy contract
             response = await self._call_contract(
-                proxy_account_id,
-                "request_signature",
-                signature_request.dict()
+                proxy_account_id, "request_signature", signature_request.dict()
             )
 
             return response
 
         except Exception as e:
             self.env.add_system_log(
-                f"Failed to request multi-action signature: {str(e)}",
-                logging.ERROR
+                f"Failed to request multi-action signature: {str(e)}", logging.ERROR
             )
             raise
 
-
-    async def _request_intent_signature(self, proxy_account_id: str, intent: Intent, block_hash: str) -> str:
+    async def _request_intent_signature(
+        self, proxy_account_id: str, intent: Intent, block_hash: str
+    ) -> str:
         """Publishes swap intent to Defuse network"""
         logger.debug(f"Publishing swap intent: {intent}")
         try:
-
             TGAS = 1_000_000_000_000
             DEFAULT_ATTACHED_GAS = 100 * TGAS
 
@@ -393,44 +398,45 @@ class NearMpcClient:
                 nonce=self._get_next_nonce(proxy_account_id),
                 block_hash=block_hash,
                 mpc_signer_pk=self._derived_key,
-                account_pk_for_mpc=self._account_public_key
+                account_pk_for_mpc=self._account_public_key,
             )
 
             # Request signature
-            result = await self._call_contract(proxy_account_id, "request_sign_message", signature_request.dict())
-            success_value = result.status.get('SuccessValue')
+            result = await self._call_contract(
+                proxy_account_id, "request_sign_message", signature_request.dict()
+            )
+            success_value = result.status.get("SuccessValue")
             logger.info(f"Successfully requested signature: {success_value}")
             return self._decode_success_value(success_value)
         except Exception as e:
             logger.error(f"Signature request failed: {str(e)}", exc_info=True)
             raise
 
-    async def sign_intent(self,
-                          proxy_account_id: str,
-                          token_in_address: str,
-                          token_out_address: str,
-                          token_in_amount: str,
-                          token_out_amount: str,
-                          quote_hash: str,
-                          deadline: str,
-                          nonce: str) -> dict:
+    async def sign_intent(
+        self,
+        proxy_account_id: str,
+        token_in_address: str,
+        token_out_address: str,
+        token_in_amount: str,
+        token_out_amount: str,
+        quote_hash: str,
+        deadline: str,
+        nonce: str,
+    ) -> dict:
         """Creates intent object with proper formatting"""
         logger.debug(f"Creating intent for signer: {proxy_account_id}")
         try:
-
             if self.network != "mainnet":
-                logger.error(
-                    "Intent creation attempted on non-mainnet network")
-                raise ValueError(
-                    "Intent creation is only supported on mainnet")
+                logger.error("Intent creation attempted on non-mainnet network")
+                raise ValueError("Intent creation is only supported on mainnet")
 
             token_diffs = [
                 IntentActions(
                     intent="token_diff",
                     diff={
-                        token_in_address: "-"+token_in_amount,
-                        token_out_address: token_out_amount
-                    }
+                        token_in_address: "-" + token_in_amount,
+                        token_out_address: token_out_amount,
+                    },
                 )
             ]
 
@@ -439,20 +445,22 @@ class NearMpcClient:
                 nonce=nonce,
                 verifying_contract="intents.near",
                 deadline=deadline,
-                intents=token_diffs
+                intents=token_diffs,
             )
             logger.info(f"Successfully created intent  {intent}")
 
             block_hash = await self._fetch_latest_block_hash()
 
-            signature = await self._request_intent_signature(proxy_account_id, intent, block_hash)
-            signature = 'ed25519:' + signature
+            signature = await self._request_intent_signature(
+                proxy_account_id, intent, block_hash
+            )
+            signature = "ed25519:" + signature
 
             result = {
                 "signature": signature,
                 "intent": intent.dict(),
                 "quote_hash": quote_hash,
-                "public_key": self._derived_key
+                "public_key": self._derived_key,
             }
             logger.info(f"Returning result: {result}")
             return result
@@ -461,11 +469,14 @@ class NearMpcClient:
             logger.error(f"Intent creation failed: {str(e)}", exc_info=True)
             raise
 
-    async def _call_contract(self, proxy_account_id: str, method_name: str, params: dict) -> dict:
+    async def _call_contract(
+        self, proxy_account_id: str, method_name: str, params: dict
+    ) -> dict:
         """Signed as the agentic account, this function sends a transaction for an MPC signature request to the user's proxy account."""
         try:
             agent_account = Account(
-                os.environ['AGENT_ACCOUNT_ID'], os.environ['AGENT_SECRET_KEY'])
+                os.environ["AGENT_ACCOUNT_ID"], os.environ["AGENT_SECRET_KEY"]
+            )
             await agent_account.startup()
 
             logger.info(f"Calling contract with params: {params}")
@@ -479,19 +490,17 @@ class NearMpcClient:
 
             # Log receipt outcomes
             logger.info("Transaction Results:")
-            logger.info(
-                f"Transaction Outcome: {result.transaction_outcome.status}")
+            logger.info(f"Transaction Outcome: {result.transaction_outcome.status}")
 
             for idx, receipt in enumerate(result.receipt_outcome):
                 logger.info(f"Receipt Outcome {idx}:")
                 logger.info(f"  Status: {receipt.status}")
-                logger.info(f"  Outcome:")
+                logger.info("  Outcome:")
                 logger.info(f"    Logs: {receipt.logs}")
                 logger.info(f"    Receipt IDs: {receipt.receipt_ids}")
 
             if "SuccessValue" not in result.status:
-                raise Exception(
-                    f"Contract call failed with status: {result.status}")
+                raise Exception(f"Contract call failed with status: {result.status}")
             return result
 
         except Exception as e:
@@ -513,7 +522,7 @@ class NearMpcClient:
         logger.debug(f"Decoding Base64 value: {base64_decoded}")
 
         # Remove quotes if present and decode from Base58
-        clean_value = base64_decoded.decode('utf-8').strip('"')
+        clean_value = base64_decoded.decode("utf-8").strip('"')
         logger.debug(f"Decoding Base64 value: {clean_value}")
         return clean_value
 
@@ -521,16 +530,15 @@ class NearMpcClient:
         """Makes RPC query to NEAR network"""
         logger.debug(f"Making RPC query - Method: {method}, Params: {params}")
         try:
-            response = requests.post(self.rpc_url, json={
-                "jsonrpc": "2.0",
-                "id": "benevio.dev",
-                "method": "query",
-                "params": {
-                    "request_type": method,
-                    "finality": "final",
-                    **params
-                }
-            })
+            response = requests.post(
+                self.rpc_url,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "benevio.dev",
+                    "method": "query",
+                    "params": {"request_type": method, "finality": "final", **params},
+                },
+            )
             response.raise_for_status()
             result = response.json()["result"]
             logger.debug(f"RPC query successful - Result: {result}")
@@ -558,12 +566,11 @@ class NearMpcClient:
         logger.debug("Parsing view result from bytes")
         try:
             # Convert byte array to string
-            result_bytes = bytes(response.get('result', []))
+            result_bytes = bytes(response.get("result", []))
             # Remove quotes if present
-            decoded = result_bytes.decode('utf-8').strip('"')
+            decoded = result_bytes.decode("utf-8").strip('"')
             logger.info(f"Successfully parsed view result: {decoded}")
             return decoded
         except Exception as e:
-            logger.error(
-                f"Failed to parse view result: {str(e)}", exc_info=True)
+            logger.error(f"Failed to parse view result: {str(e)}", exc_info=True)
             raise
