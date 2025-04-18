@@ -117,7 +117,7 @@ RECOMMEND_SWAP_SAMPLE_2 = [
     {
         "id": "example_msg_3",
         "content": """
-Definitely! Here is one way to achieve your current allowance goal of 300. You could swap these amounts of tokens in your wallet for stable coins:
+Definitely! Here is one way to achieve your current allowance goal of 300. You could swap these amounts of tokens in your wallet for stablecoins:
 * BTC: 0.1857
 * NEAR: 5.191913184
 

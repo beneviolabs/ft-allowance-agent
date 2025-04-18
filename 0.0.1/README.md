@@ -81,7 +81,8 @@ export AGENT_SECRET_KEY="<secret-key-from-previous-step>"
 - Prompt and context: Check the prompt construction. Check how many messages are being passed in the context and whether anything in them could be inducing hallucinations.
 - Model: Ensure you're not using `llama-3p3-70b-instruct` model. It doesn't seem to work well with nearai and returns responses
 as _assistant_ messages instead of tool calls.
-- Tools: If there was a tool call, check its docstring since this also affects the prompt. Only the first line is added to the tool description, the rest of the lines are parsed as args.
-- Examples: Consider adding [few-shot examples](https://blog.langchain.dev/few-shot-prompting-to-improve-tool-calling-performance/) to the prompt.
+- Tools: If there was a tool call, check its docstring since this also affects the prompt. Only the first line is added to the tool description, the rest of the lines are parsed into arg parameters and descriptions e.g. `{'type': 'function', 'function': {'name': 'save_goal', 'description': 'Save a portfolio goal (growth or allowance) specified by the user.', 'parameters': {'type': 'object', 'properties': {'goal': {'description': 'The numerical value of the goal in USD', 'type': 'integer'}, 'type_': {'description': 'Either "growth" or "allowance"', 'type': 'string'}}, 'required': ['goal', 'type_']}}}`.
+- Examples: Consider adding [few-shot examples](https://blog.langchain.dev/few-shot-prompting-to-improve-tool-calling-performance/) to the prompt to help guide the bot in generating a response.
+These live in fewshots.py.
 
 
