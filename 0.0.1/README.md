@@ -59,16 +59,24 @@ This is the Python source code.
 
 1. Ensure you have an empty app called `test-app` in your Near account. If not, use nearai CLI to create and deploy it.
 
-1. Ensure `show_entry` is set to true and run the following from the 0.0.1 directory
+1. Copy `metadata.dev.json` into `metadata.json` and ensure `show_entry` is set to true then run the following from the 0.0.1 directory
    ```
    nearai registry upload --bump
    ```
 
+   > ⚠️‼️ Caution: Every file in the 0.0.1 directory will be uploaded to the app, so make sure you don't have any sensitive files in there.
+
 1. Go to your nearai dashboard and find your new deployment
 
-1. If you wanna hide the bot, set the show_entry field in metadata.json file to false and run `nearai registry upload --bump` again to set the listing to private.
+1. If you wanna hide the bot, set the show_entry field in metadata.json file to _false_ and run `nearai registry upload --bump` again to set the listing to private.
 
 1. If there is a dependency that needs to be updated, we need to submit a pull request to the nearai repo to update their aws_runner dependencies over [here](https://github.com/nearai/nearai/blob/main/aws_runner/frameworks/requirements-standard.txt).
+
+### Setting secrets
+
+- You can set secrets in the nearai dashboard. They will be available in the env vars of the running agent. When set there, they will be considered agent secrets and will be available to anyone running your agent.
+
+   So for example if you are user exampleuser.near with agent foobar, any secret you set for foobar will be usable but not visible to otheruser2.near who uses your agent.
 
 
 ### Troubleshooting deployments and the deployed running application
