@@ -48,7 +48,7 @@ const MAINNET_SIGNER: &str = "v1.signer";
 pub enum ActionString {
     FunctionCall {
         method_name: String,
-        args: String,
+        args: serde_json::Value,
         gas: String,
         deposit: String,
     },
@@ -218,7 +218,8 @@ impl ProxyContract {
         let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
 
         // Parse actions from JSON string
-        let actions: Vec<ActionString> = serde_json::from_str(&actions_json).unwrap();
+        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
+            .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
 
         near_sdk::env::log_str(&format!(
             "Request received - Contract: {}, Actions: {:?}, Nonce: {}, Block Hash: {:?}",
@@ -248,9 +249,13 @@ impl ProxyContract {
                     };
                     NearAction::is_allowed(&near_action);
 
+                    // Convert args to bytes
+                    let args_bytes = serde_json::to_vec(&args)
+                        .unwrap_or_else(|e| panic!("Failed to serialize args: {:?}", e));
+
                     OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
                         method_name,
-                        args: args.into_bytes(),
+                        args: args_bytes,
                         gas: OmniU64(gas_u64.into()),
                         deposit: safe_deposit.0.into(),
                     }))

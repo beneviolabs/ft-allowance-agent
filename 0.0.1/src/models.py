@@ -36,7 +36,7 @@ class MpcKey:
 
 
 @dataclass
-class MultiActionSignatureRequest:
+class MultiActionSignatureRequest(DictMixin):
     contract_id: str
     actions_json: str
     nonce: str

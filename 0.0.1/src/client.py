@@ -348,25 +348,19 @@ class NearMpcClient:
         """
         try:
             # Get latest block hash if not provided
-            block_hash = await self._get_latest_block_hash()
-
-            # Get next nonce for the account
-            nonce = await self._get_next_nonce()
+            block_hash = await self._fetch_latest_block_hash()
 
             # Create signature request
             signature_request = MultiActionSignatureRequest(
                 contract_id=contract_id,
                 actions_json=actions_json,
-                nonce=str(nonce),
+                nonce=self._get_next_nonce(proxy_account_id),
                 block_hash=block_hash,
-                mpc_signer_pk=self.mpc_signer_pk,
-                account_pk_for_mpc=self.account_pk_for_mpc,
+                mpc_signer_pk=self._derived_key,
+                account_pk_for_mpc=self._account_public_key
             )
 
-            self.env.add_system_log(
-                f"Requesting multi-action signature for contract {contract_id}",
-                logging.DEBUG,
-            )
+            logger.debug(f"Requesting multi-action signature for contract {contract_id}")
 
             # Call proxy contract
             response = await self._call_contract(
@@ -376,9 +370,7 @@ class NearMpcClient:
             return response
 
         except Exception as e:
-            self.env.add_system_log(
-                f"Failed to request multi-action signature: {str(e)}", logging.ERROR
-            )
+            logger.error(f"Failed to request multi-action signature: {str(e)}")
             raise
 
     async def _request_intent_signature(
@@ -479,7 +471,7 @@ class NearMpcClient:
             )
             await agent_account.startup()
 
-            logger.info(f"Calling contract with params: {params}")
+            logger.debug(f"Calling contract with params: {params}")
             result = await agent_account.function_call(
                 proxy_account_id,
                 method_name,
