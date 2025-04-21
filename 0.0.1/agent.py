@@ -494,6 +494,7 @@ Output: "noop"
         deposit_address = best_quote.quote.get("depositAddress")
 
         # Create a signature request for deposit and ft_transfer_call
+        # TODO move the building of the actions payload into a utility function
         actions = [
             {
                 "type": "FunctionCall",
