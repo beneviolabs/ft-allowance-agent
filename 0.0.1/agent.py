@@ -18,7 +18,6 @@ from src.utils import (
     yocto_to_near,
 )
 
-
 DIVVY_GOALS = set(["allowance", "growth"])
 DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
 
