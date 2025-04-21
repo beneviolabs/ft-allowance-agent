@@ -357,10 +357,12 @@ class NearMpcClient:
                 nonce=self._get_next_nonce(proxy_account_id),
                 block_hash=block_hash,
                 mpc_signer_pk=self._derived_key,
-                account_pk_for_mpc=self._account_public_key
+                account_pk_for_mpc=self._account_public_key,
             )
 
-            logger.debug(f"Requesting multi-action signature for contract {contract_id}")
+            logger.debug(
+                f"Requesting multi-action signature for contract {contract_id}"
+            )
 
             # Call proxy contract
             response = await self._call_contract(

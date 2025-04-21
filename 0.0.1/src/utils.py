@@ -450,15 +450,12 @@ async def demo_quote():
             dry,
         )
 
-
         depopsitAddress = quotes["USDC"].quote.get("depositAddress")
         amount_in = quotes["USDC"].quoteRequest.get("amount")
         print(f"Amount in: {amount_in}")
         print(f"Deposit address: {depopsitAddress}")
 
-        msg = {
-            "receiver_id": depopsitAddress
-        }
+        msg = {"receiver_id": depopsitAddress}
 
         actions = [
             {
@@ -471,23 +468,27 @@ async def demo_quote():
         ]
 
         if not dry:
-            actions.append({
-                "type": "FunctionCall",
-                "method_name": "ft_transfer_call",
-                "deposit": "1",
-                "args": {
-                    "receiver_id": "intents.near",
-                    "amount": str(amount_in),
-                    "msg": json.dumps(msg)
-                },
-                "gas": "50000000000000",
-            })
+            actions.append(
+                {
+                    "type": "FunctionCall",
+                    "method_name": "ft_transfer_call",
+                    "deposit": "1",
+                    "args": {
+                        "receiver_id": "intents.near",
+                        "amount": str(amount_in),
+                        "msg": json.dumps(msg),
+                    },
+                    "gas": "50000000000000",
+                }
+            )
 
         actions_json = json.dumps(actions)
 
         logger.debug(f"request payload: {actions_json}")
 
-        siggy = await client._request_multi_action_signature("wrap.near", actions_json, "agent.charleslavon.near")
+        siggy = await client._request_multi_action_signature(
+            "wrap.near", actions_json, "agent.charleslavon.near"
+        )
 
         print(f"Signature: {siggy}")
 
