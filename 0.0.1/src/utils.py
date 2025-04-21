@@ -445,11 +445,52 @@ async def demo_quote():
     try:
         quotes = await client.get_stablecoin_quotes(
             "nep141:wrap.near",
-            "50000000000000000000000",
+            "500000000000000000000000",
             "agent.charleslavon.near",
             dry,
         )
-        logger.debug(f"Quote details: {quotes}")
+
+
+        depopsitAddress = quotes["USDC"].quote.get("depositAddress")
+        amount_in = quotes["USDC"].quoteRequest.get("amount")
+        print(f"Amount in: {amount_in}")
+        print(f"Deposit address: {depopsitAddress}")
+
+        msg = {
+            "receiver_id": depopsitAddress
+        }
+
+        actions = [
+            {
+                "type": "FunctionCall",
+                "method_name": "near_deposit",
+                "deposit": str(amount_in),
+                "gas": "50000000000000",
+                "args": {},
+            }
+        ]
+
+        if not dry:
+            actions.append({
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "deposit": "1",
+                "args": {
+                    "receiver_id": "intents.near",
+                    "amount": str(amount_in),
+                    "msg": json.dumps(msg)
+                },
+                "gas": "50000000000000",
+            })
+
+        actions_json = json.dumps(actions)
+
+        logger.debug(f"request payload: {actions_json}")
+
+        siggy = await client._request_multi_action_signature("wrap.near", actions_json, "agent.charleslavon.near")
+
+        print(f"Signature: {siggy}")
+
         # await client.oneclickapi.check_transaction_status("7d1eaa39006bcec14a040cdd10f876be458dc222e0dced46057bd0a036c36f08")
 
         # supported_tokens = await client.oneclickapi.get_supported_tokens()
