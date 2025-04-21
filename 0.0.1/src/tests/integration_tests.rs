@@ -134,11 +134,8 @@ mod integration_tests {
         let result = unauthorized_user
             .call(contract.id(), "request_signature")
             .args_json(json!({
-                "contract_id": "test.near",
-                "method_name": "test_method",
-                "args": "[{\"public_key\": \"ed25519:1234\"}]",
-                "gas": "30000000000000",
-                "deposit": "0",
+                "contract_id": "wrap.testnet",
+                "actions_json": "[{\"type\":\"FunctionCall\", \"deposit\": \"50000000000000000000000\", \"gas\": \"300000000000000\", \"method_name\": \"near_deposit\", \"args\": \"\"}]",
                 "nonce": "1",
                 "block_hash": "11111111111111111111111111111111",
                 "mpc_signer_pk":"secp256k1:asdf".to_string(),

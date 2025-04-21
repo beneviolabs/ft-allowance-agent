@@ -1,12 +1,14 @@
 use std::str::FromStr;
 
 use actions::NearAction;
+use ed25519_dalek::{PublicKey as PublicKey2, Signature as Ed25519Signature2, Verifier};
 use hex::FromHex;
 use near_gas::NearGas;
 use near_sdk::base64;
 use near_sdk::collections::UnorderedSet;
 use near_sdk::ext_contract;
 use near_sdk::json_types::{Base58CryptoHash, U64};
+use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     bs58, env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey,
 };
@@ -21,12 +23,13 @@ use omni_transaction::{
     NEAR,
 };
 
-use ed25519_dalek::{PublicKey as PublicKey2, Signature as Ed25519Signature2, Verifier};
+pub use crate::models::*;
+pub use crate::serializer::SafeU128;
+
 mod actions;
 mod models;
+mod serializer;
 mod utils;
-
-pub use crate::models::*;
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
@@ -39,6 +42,20 @@ const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
 const MAINNET_SIGNER: &str = "v1.signer";
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum ActionString {
+    FunctionCall {
+        method_name: String,
+        args: serde_json::Value,
+        gas: String,
+        deposit: String,
+    },
+    Transfer {
+        deposit: String,
+    },
+}
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -84,7 +101,7 @@ impl ProxyContract {
     }
 
     #[payable]
-    // TODO - test this after adding a callback fn specifically for this
+    // TODO - test this when ed25519 signatuers are live and add a callback fn specifically for this
     pub fn request_sign_message(
         &mut self,
         contract_id: AccountId,
@@ -176,10 +193,7 @@ impl ProxyContract {
     pub fn request_signature(
         &mut self,
         contract_id: AccountId,
-        method_name: Option<String>,
-        args: String,
-        gas: U64,
-        deposit: NearToken,
+        actions_json: String,
         nonce: U64,
         block_hash: Base58CryptoHash,
         mpc_signer_pk: String,
@@ -203,38 +217,58 @@ impl ProxyContract {
         let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
         let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
 
+        // Parse actions from JSON string
+        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
+            .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
+
         near_sdk::env::log_str(&format!(
-            "Request received - Contract: {}, Method: {:?}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
-            contract_id,
-            method_name,
-            args,
-            gas.0,
-            deposit.as_yoctonear(),
-            nonce.0,
-            block_hash
+            "Request received - Contract: {}, Actions: {:?}, Nonce: {}, Block Hash: {:?}",
+            contract_id, actions, nonce.0, block_hash
         ));
 
-        let action = NearAction {
-            method_name: method_name.clone(),
-            contract_id: contract_id.clone(),
-            gas_attached: NearGas::from_gas(gas.0),
-            deposit_attached: deposit,
-        };
+        // Convert string actions to OmniActions
+        let omni_actions: Vec<OmniAction> = actions
+            .into_iter()
+            .map(|action| match action {
+                ActionString::FunctionCall {
+                    method_name,
+                    args,
+                    gas,
+                    deposit,
+                } => {
+                    let gas_u64 = U64::from(gas.parse::<u64>().unwrap());
+                    let deposit_near = NearToken::from_yoctonear(deposit.parse().unwrap());
+                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
 
-        // verify the action is permitted
-        NearAction::is_allowed(&action);
+                    // Verify action is allowed
+                    let near_action = NearAction {
+                        method_name: Some(method_name.clone()),
+                        contract_id: contract_id.clone(),
+                        gas_attached: NearGas::from_gas(gas_u64.0),
+                        deposit_attached: deposit_near,
+                    };
+                    NearAction::is_allowed(&near_action);
 
-        // Convert the JSON string to bytes
-        let args_bytes = args.into_bytes();
+                    // Convert args to bytes
+                    let args_bytes = serde_json::to_vec(&args)
+                        .unwrap_or_else(|e| panic!("Failed to serialize args: {:?}", e));
 
-        let actions = vec![OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
-            method_name: method_name.unwrap_or_default(),
-            args: args_bytes,
-            gas: OmniU64(gas.into()),
-            deposit: OmniU128(deposit.as_yoctonear()),
-        }))];
-
-        near_sdk::env::log_str(&format!("Near Token deposit amount: {}", deposit));
+                    OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
+                        method_name,
+                        args: args_bytes,
+                        gas: OmniU64(gas_u64.into()),
+                        deposit: safe_deposit.0.into(),
+                    }))
+                }
+                ActionString::Transfer { deposit } => {
+                    let deposit_near = NearToken::from_yoctonear(deposit.parse().unwrap());
+                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
+                    OmniAction::Transfer(omni_transaction::near::types::TransferAction {
+                        deposit: safe_deposit.0.into(),
+                    })
+                }
+            })
+            .collect();
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
@@ -245,21 +279,40 @@ impl ProxyContract {
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
-            .actions(actions.clone())
+            .actions(omni_actions.clone())
             .build();
 
-        // Serialize transaction into a string to pass into callback
-        let tx_json_string = serde_json::to_string(&tx)
-            .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e))
-            .replace("1000000000000000000000000", "\"1000000000000000000000000\""); // TODO Temp fix
+        // Extract deposit values from omni_actions
+        let deposits: Vec<OmniU128> = omni_actions
+            .iter()
+            .map(|action| match action {
+                OmniAction::FunctionCall(call) => call.deposit.clone(),
+                OmniAction::Transfer(transfer) => transfer.deposit.clone(),
+                _ => OmniU128(0),
+            })
+            .collect();
 
+        near_sdk::env::log_str(&format!("Action deposits: {:?}", deposits));
+
+        // Serialize transaction into a string to pass into callback
+        let mut tx_json_string = serde_json::to_string(&tx)
+            .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
+
+        // Convert any large deposit numbers to strings in the JSON
+        let modified_tx_string = deposits.iter().fold(tx_json_string, |acc, deposit| {
+            acc.replace(
+                &format!("\"deposit\":{}", deposit.0.to_string()),
+                &format!("\"deposit\":\"{}\"", deposit.0.to_string()),
+            )
+        });
+        tx_json_string = modified_tx_string;
         near_sdk::env::log_str(&format!("near tx in json: {}", tx_json_string));
 
         near_sdk::env::log_str(&format!(
             "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
             contract_id,
             self.owner_id,
-            actions,
+            omni_actions,
             nonce.0,
             block_hash
         ));
@@ -304,7 +357,6 @@ impl ProxyContract {
             )
     }
 
-    // TODO create another verison of this function that expects a string messaage instead of a txn string
     #[private] // Only callable by the contract itself
     pub fn sign_request_callback(
         &mut self,

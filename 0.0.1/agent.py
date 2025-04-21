@@ -4,8 +4,10 @@ import logging
 import re
 import traceback
 import typing
+from decimal import Decimal
 from types import SimpleNamespace
 
+from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
 from src.client import NearMpcClient
 from src.fewshots import ALL_FEWSHOT_SAMPLES
 from src.utils import (
@@ -16,12 +18,10 @@ from src.utils import (
     yocto_to_near,
 )
 
-from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
-
-NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
-
 DIVVY_GOALS = set(["allowance", "growth"])
 DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
+
+NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
 
 class Agent:
@@ -423,15 +423,36 @@ Output: "noop"
         if type_ == "growth":
             self._growth_goal = int(goal)
 
-    def execute_swap(self):
-        """Execute a swap to realize the desired allowance goal"""
+    async def execute_stablecoin_swap(self):
+        """Execute a swap of NEAR tokens for stablecoins (USDC/USDT) to meet allowance goal.
+
+        This method performs a multi-step process to swap NEAR tokens for stablecoins:
+        1. Validates required data (account ID and allowance goal)
+        2. Gets recommended token allocations if not already present
+        3. Fetches quotes for both USDC and USDT swaps
+        4. Selects the best quote based on minimum amount out (accounting for slippage)
+        5. Executes the swap on intents.near by:
+            - Depositing NEAR to wrap.near contract
+            - Calling ft_transfer_call with appropriate deposit address
+        6. Monitors and returns transaction status
+
+        Key Components:
+        - Uses wrapped NEAR (nep141:wrap.near) as the input token
+        - Compares quotes between USDC and USDT for best rate
+        - Handles multi-action transaction signing through proxy account
+        - Includes slippage protection via minAmountOut parameter
+
+        Returns:
+             str: Transaction status after swap initiation
+        """
+
         # Ensure we have account ID
         if not self.near_account_id:
-            self.find_near_account_id()
+            return "Unable to fetch balance because user hasn't provided NEAR account ID. Ask them to provide it."
 
         # Ensure we have an allowance goal
         if not self.allowance_goal:
-            self.get_allowance_goal()
+            return "The user needs their allowance goal set to execute a swap. Prompt them to provide one."
 
         # Ensure we have recommended tokens
         if not self.recommended_tokens:
@@ -442,35 +463,78 @@ Output: "noop"
             self.recommend_token_allocations_to_swap_for_stablecoins()
 
         # Get quotes for both USDC and USDT
-        usdc_quotes = get_usdc_quotes(self.recommended_tokens)
-        usdt_quotes = get_usdt_quotes(self.recommended_tokens)
+        amount_in = self.recommended_tokens.get("NEAR", 0)
+        self.env.add_system_log(
+            f"Fetching quotes to swap {amount_in} Near for USDC/USDT", logging.DEBUG
+        )
 
-        # Choose the highest value
-        if usdc_quotes.usd_value > usdt_quotes.usd_value:
-            best_quote = usdc_quotes
-        else:
-            best_quote = usdt_quotes
+        quotes = await self._client.get_stablecoin_quotes(
+            "nep141:wrap.near", amount_in, self.near_account_id
+        )
 
-        # TODO create an intent payload with best_quote
+        # Choose best quote between USDC and USDT based on minimum amount out with slippage taken into account
+        best_quote = None
+        if quotes.get("USDC") and quotes.get("USDT"):
+            usdc_amount = Decimal(quotes["USDC"].quote.get("minAmountOut", 0))
+            usdt_amount = Decimal(quotes["USDT"].quote.get("minAmountOut", 0))
+            best_quote = quotes["USDC"] if usdc_amount > usdt_amount else quotes["USDT"]
+        elif quotes.get("USDC"):
+            best_quote = quotes["USDC"]
+        elif quotes.get("USDT"):
+            best_quote = quotes["USDT"]
 
-        # intent = self._client.create_intent(
-        #    signer_id=self.near_account_id,
-        #    token_diffs=self.get_token_diffs(self.allowance_goal)
-        # )
+        if not best_quote:
+            self.env.add_system_log("No valid quotes received", logging.ERROR)
+            return
 
-        # TODO requst a signature for teh intent
+        # Log the best quote
+        self.env.add_system_log(f"Best quote: {best_quote.quote}", logging.DEBUG)
 
-        # return self._client.request_signature(
-        #    SignatureRequest(
-        #        contract_id="intents.near",
-        #        method_name="sign_intent",
-        #        args=json.dumps(intent.dict())
-        #    )
-        # )
+        # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
+        deposit_address = best_quote.quote.get("depositAddress")
 
-        # TODO publish the intent with the MPC signature
+        # Create a signature request for deposit and ft_transfer_call
+        # TODO move the building of the actions payload into a utility function
+        actions = [
+            {
+                "type": "FunctionCall",
+                "method_name": "near_deposit",
+                "deposit": str(amount_in),
+                "gas": "50000000000000",
+                "args": {},
+            },
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {
+                    "receiver_id": "intents.near",
+                    "amount": str(amount_in),
+                    "msg": json.dumps({"receiver_id": deposit_address}),
+                },
+                "gas": "50000000000000",
+            },
+        ]
+        actions_json = json.dumps(actions)
+        proxy_account_id = "agent." + self.near_account_id
 
-        # what should be our return value?
+        result = await self._client._request_multi_action_signature(
+            "wrap.near", actions_json, proxy_account_id
+        )
+        self.env.add_system_log(f"Got signature result: {result}", logging.DEBUG)
+        if not result:
+            self.env.add_system_log(
+                "Failed to get signature for actions", logging.ERROR
+            )
+            return
+
+        # TODO Publish the signed transactions
+
+        # Monitor status
+        status = await self._client.check_transaction_status(deposit_address)
+
+        self.env.add_system_log(f"Swap initiated - Status: {status}", logging.INFO)
+
+        return status
 
 
 if globals().get("env", None):
