@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 from py_near.account import Account
 
-from src.models import (
+from src.clients.models import (
     Intent,
     IntentActions,
     MpcKey,

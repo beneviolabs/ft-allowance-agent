@@ -1,6 +1,7 @@
 import inspect
 import json
 import logging
+import os
 import re
 import traceback
 import typing
@@ -8,7 +9,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
-from src.client import NearMpcClient
+from src.common import DivvyGoalType
+from src.clients.client import NearMpcClient
 from src.fewshots import ALL_FEWSHOT_SAMPLES
 from src.utils import (
     fetch_coinbase,
@@ -19,8 +21,6 @@ from src.utils import (
 )
 
 DIVVY_GOALS = set(["allowance", "growth"])
-DivvyGoalType = typing.Literal["allowance"] | typing.Literal["growth"]
-
 NEAR_ID_REGEX = re.compile(r"^[a-z0-9._-]+\.near$")
 
 
@@ -258,11 +258,10 @@ Output: "noop"
 
     def get_near_account_id(self) -> str | None:
         """Get the NEAR account ID of the user"""
-        if not self.near_account_id:
+        if self.near_account_id is None:
             return (
                 "The user hasn't provided a NEAR account ID yet. Ask them to provide one.",
             )
-
         return self.near_account_id
 
     def get_near_account_balance(self) -> str | float:
