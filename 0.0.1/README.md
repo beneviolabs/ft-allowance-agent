@@ -48,6 +48,8 @@ export AGENT_ACCOUNT_ID="benevio-labs.testnet"
 export AGENT_SECRET_KEY="<secret-key-from-previous-step>"
 ```
 
+1. Copy `metadata.dev.json` into `metadata.json`.
+
 1. Run the agent locally
 
    ```sh
@@ -90,7 +92,7 @@ These live in fewshots.py.
 
 1. Ensure you have an empty app called `test-app` in your Near account. If not, use nearai CLI to create and deploy it.
 
-1. Copy `metadata.dev.json` into `metadata.json` and ensure `show_entry` is set to true then run the following from the 0.0.1 directory
+1. Ensure `show_entry` is set to true in metadata.json then run the following from the 0.0.1 directory
    ```
    nearai registry upload --bump
    ```
