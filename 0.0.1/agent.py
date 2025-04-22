@@ -96,7 +96,7 @@ Your user is a crypto beginner who is looking to set up a portfolio and achieve 
 Your context will be populated by tool call results to help you respond to the user.
 
 -Capabilities-
-You can show user account details such as their balance and their NEAR account ID.
+You can show user account details as their Near token balance.
 You can provide the real-time current market prices of crypto tokens in the users wallet.
 You can allow the user to set growth and allowance goals on their portfolio.
 You are capable of personalized recommendations for token swaps to achieve the user's allowance goal in USDC.
@@ -265,7 +265,7 @@ Output: "noop"
 
     def get_near_account_id(self) -> str | None:
         """Get the NEAR account ID of the user"""
-        if not self.near_account_id:
+        if self.near_account_id is None:
             return (
                 "The user hasn't provided a NEAR account ID yet. Ask them to provide one.",
             )
@@ -273,7 +273,7 @@ Output: "noop"
         return self.near_account_id
 
     def get_near_account_balance(self) -> str | float:
-        """Fetch and return the NEAR token balance for a user's account."""
+        """Get the Near account details including the NEAR token balance for a user's account."""
         balance = None
         if self.near_account_id:
             balance = get_near_account_balance(self.near_account_id)
@@ -282,8 +282,11 @@ Output: "noop"
             self.env.add_reply("Found the user's balance", message_type="system")
         else:
             return "Unable to fetch balance because user hasn't provided NEAR account ID. Ask them to provide it."
-
-        return balance
+        self.env.add_reply(
+                "Your account balance is: "
+                f"{self.near_account_balance} Near. "
+            )
+        return self.near_account_balance
 
     # IMPROVE: this function can be parameterized to only query prices for tokens user specifies and fetch all if there's no param value
     def fetch_token_prices(self):

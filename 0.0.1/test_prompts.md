@@ -11,29 +11,12 @@ Format:
 
 ## 1. Near account
 
-### 1.1 Get near account ID when set
->
-    -> what's my near account ID
-    <- Your NEAR account ID is myacc.near.
+### 1.1 Get your account details
+    -> what are my account details
+    <- Assistant: Your account balance is: 100.81321123061544 Near.
+    Assistant: Your account details are:
 
-### 1.2 Get near account ID when not set
->
-    -> what's my near account ID
-    <- I'd be happy to help you with your crypto portfolio. However, I don't have access to your NEAR account ID at the moment. Could you please provide it to me so I can better assist you?
-
-### 1.3 Set valid near account ID
->
-    -> set my near account ID to myacc.near
-    <- Saved your NEAR account ID: myacc.near
-
->
-    -> myacc.near
-    <- Saved your NEAR account ID: myacc.near
-
-### 1.4 Set invalid near account ID
->
-    -> set my near account ID to blorbo.
-    <- Please provide a valid NEAR account ID.
+    * NEAR token balance: 100.81321123061544
 
 ## 2. Portfolio Goals
 
