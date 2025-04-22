@@ -109,6 +109,7 @@ These live in fewshots.py.
 
    So for example if you are user exampleuser.near with agent foobar, any secret you set for foobar will be present (but not visible) when otheruser2.near uses your agent.
 
+   > ⚠️ Any changes to the secrets you make will also be effected on the other user's runtime. So be careful when changing them.
 
 ### Troubleshooting deployments and the deployed running application
 
