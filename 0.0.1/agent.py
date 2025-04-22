@@ -7,6 +7,8 @@ import typing
 from decimal import Decimal
 from types import SimpleNamespace
 
+from nearai_langchain.local_config import LOCAL_NEAR_AI_CONFIG
+
 from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
 from src.client import NearMpcClient
 from src.fewshots import ALL_FEWSHOT_SAMPLES
@@ -30,18 +32,23 @@ class Agent:
         self._allowance_goal = None
         self.prices = None
         self.recommended_tokens = None
-        self._near_account_id = None
         self._growth_goal = None
         self.near_account_balance = None
         self._client = NearMpcClient(network=env.env_vars["network"])
         tool_registry = self.env.get_tool_registry()
         tool_registry.register_tool(self.recommend_token_swaps)
         tool_registry.register_tool(self.get_near_account_id)
-        tool_registry.register_tool(self.save_near_account_id)
         tool_registry.register_tool(self.get_goals)
         tool_registry.register_tool(self.save_goal)
         tool_registry.register_tool(self.get_near_account_balance)
         tool_registry.register_tool(self.fetch_token_prices)
+
+        config = LOCAL_NEAR_AI_CONFIG.client_config()
+        self.env.add_system_log(f"Using Near AI config: {config}", logging.DEBUG)
+        assert config.auth.account_id, (
+            "An authenticated Near account ID is expected in the Near AI config"
+        )
+        self._persist_near_id(config.auth.account_id)
 
         # hack to disallow some builtin tools from the library. Might be fragile to future changes in which case we can blacklist them in the prompt
         del tool_registry.tools["write_file"]
@@ -388,16 +395,6 @@ Output: "noop"
         return (
             f"The user should swap the following tokens to achieve their allowance goal of {self.allowance_goal}: {result}",
         )
-
-    def save_near_account_id(self, near_id: str) -> str | None:
-        """Save the Near account ID the user provides"""
-        if near_id and NEAR_ID_REGEX.match(near_id):
-            self._persist_near_id(near_id)
-            return f"Successfully set the NEAR account ID to {self.near_account_id}"
-        else:
-            self.env.add_reply(
-                "Please provide a valid NEAR account ID.",
-            )
 
     def save_goal(self, goal: int, type_: DivvyGoalType) -> str | None:
         """Save a portfolio goal (growth or allowance) specified by the user."""
