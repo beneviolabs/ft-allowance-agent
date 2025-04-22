@@ -2,15 +2,155 @@ import base64
 import json
 import logging
 import os
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Dict, List, Optional
 
 import aiohttp
 import requests
 from dotenv import load_dotenv
 from py_near.account import Account
-from src.models import Intent, IntentActions, MpcKey, PublicKey, SignatureRequest
+
+from src.models import (
+    Intent,
+    IntentActions,
+    MpcKey,
+    MultiActionSignatureRequest,
+    OneClickQuote,
+    PublicKey,
+    SignMessageSignatureRequest,
+)
+from src.utils import get_usdc_token_out_type, get_usdt_token_out_type
+
+# Expose this logger config when testing these methods directly, without using the AI interface
+# from .logger_config import configure_logging
+# configure_logging()
 
 logger = logging.getLogger(__name__)
+
+
+class OneClickClient:
+    BASE_URL = "https://1click.chaindefuser.com/v0"
+
+    def __init__(self):
+        self.session = None
+        logger.debug("OneClickClient initialized")
+
+    async def _ensure_session(self):
+        """Ensures a client session exists"""
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def close(self):
+        await self.session.close()
+
+    async def get_supported_tokens(self) -> List[Dict]:
+        """Fetch list of supported tokens from 1click API"""
+        try:
+            session = await self._ensure_session()
+            async with session.get(f"{self.BASE_URL}/tokens") as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"Got supported tokens: {len(data)} tokens")
+                    return data
+                else:
+                    logger.error(f"Failed to get tokens: {response.status}")
+                    return []
+        except Exception as e:
+            logger.error(f"Error fetching supported tokens: {e}")
+            raise
+
+    async def get_quote(
+        self,
+        token_in: str,
+        token_out: str,
+        amount_in: Decimal,
+        depositor_address: str,
+        recipient: str,
+        dry: bool = True,
+        slippage_tolerance: int = 100,
+        deadline: Optional[str] = None,
+    ) -> Optional[OneClickQuote]:
+        """
+        Get quote for swapping tokens using 1click API
+
+        Args:
+            token_in: Input token identifier (e.g. "nep141:wrap.near")
+            token_out: Output token identifier (e.g. "nep141:usdc.near")
+            amount_in: Amount of input token
+            dry: If True, returns quote without executing swap
+            slippage_tolerance: Maximum allowed slippage (default 1%)
+            refund_to: Address to refund to if swap fails
+            recipient: Address to receive swapped tokens
+            deadline: Timestamp when a refund will be triggered
+        """
+        logger.debug(f"Getting quote for {amount_in} {token_in} to {token_out}")
+
+        try:
+            # Set deadline to 15 minutes from now if not provided
+            if deadline is None:
+                future_time = datetime.now(timezone.utc) + timedelta(minutes=15)
+                deadline = future_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                logger.debug(f"Generated deadline: {deadline}")
+
+            payload = {
+                "dry": dry,
+                # request a quote given an exact input amount. The refundTo address will always receive excess tokens back even after the swap is complete.
+                "swapType": "EXACT_INPUT",
+                "slippageTolerance": slippage_tolerance,
+                "originAsset": token_in,
+                # For deposits orignating from a near account.  Otherwise use "INTENTS"
+                "depositType": "INTENTS",
+                "destinationAsset": token_out,
+                # denoted in the smallest unit of the specified currency (e.g., wei for ETH).
+                "amount": str(amount_in),
+                "refundTo": depositor_address,
+                # or use "ORIGIN_CHAIN" to refund the assets to account on their original chain
+                "refundType": "INTENTS",
+                "recipient": recipient,  # The format should match recipientType
+                "recipientType": "DESTINATION_CHAIN",
+                "deadline": deadline,
+                "referral": "benevio-labs.near",
+            }
+            logger.debug(f"Sending quote request with payload: {payload}")
+
+            session = await self._ensure_session()
+            async with session.post(f"{self.BASE_URL}/quote", json=payload) as response:
+                if response.status in [200, 201]:
+                    data = await response.json()
+                    if not dry:
+                        logger.info(
+                            f"Swap initiated with deposit address: {data.get('deposit_address')}"
+                        )
+
+                    return OneClickQuote(**data)
+                else:
+                    error_body = await response.text()
+                    logger.error(f"Failed to get quote. Status code: {response.status}")
+                    logger.error(f"Failed to get quote: {error_body}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting quote: {e}")
+            raise
+
+    async def check_transaction_status(self, deposit_address: str) -> Dict:
+        """Check status of a transaction using deposit address"""
+        try:
+            async with self.session.get(
+                f"{self.BASE_URL}/status?depositAddress={deposit_address}"
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.debug(f"Got transaction status: {data}")
+                    return data
+                else:
+                    error_body = await response.text()
+                    logger.error(f"Failed to get status: {error_body}")
+                    return {}
+        except Exception as e:
+            logger.error(f"Error checking transaction status: {e}")
+            raise
 
 
 class NearMpcClient:
@@ -21,6 +161,7 @@ class NearMpcClient:
         # Validate required environment variables
         self._validate_env_vars()
 
+        self.oneclickapi = OneClickClient()
         self.network = network
         self.rpc_url = f"https://rpc.{network}.fastnear.com"
         self.mpc_signer = (
@@ -28,6 +169,39 @@ class NearMpcClient:
         )
         self._derived_key: Optional[str] = None
         self._account_public_key: Optional[PublicKey] = None
+
+    async def close(self):
+        await self.oneclickapi.session.close()
+
+    async def get_stablecoin_quotes(
+        self,
+        token_in: str,
+        amount_in: str,
+        requested_by_address: str,
+        dry: bool = True,
+    ) -> Dict[str, OneClickQuote]:
+        """Get quotes for both USDC and USDT swaps"""
+        quotes = {}
+
+        # get stablecoin identifiers depending on the input token
+        stablecoins = {
+            "USDC": get_usdc_token_out_type(token_in),
+            "USDT": get_usdt_token_out_type(token_in),
+        }
+
+        for name, token_id in stablecoins.items():
+            quote = await self.oneclickapi.get_quote(
+                token_in,
+                token_id,
+                amount_in,
+                requested_by_address,
+                requested_by_address,
+                dry,
+            )
+            if quote:
+                quotes[name] = quote
+
+        return quotes
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set"""
@@ -155,18 +329,50 @@ class NearMpcClient:
             logger.error(f"Failed to get next nonce: {str(e)}", exc_info=True)
             raise
 
-    async def request_signature(
-        self, proxy_account_id: str, request: SignatureRequest
-    ) -> str:
-        """Requests signature for given parameters"""
-        logger.debug(f"Requesting signature with: {request.dict()}")
+    async def _request_multi_action_signature(
+        self,
+        contract_id: str,
+        actions_json: str,
+        proxy_account_id: str,
+    ) -> Dict:
+        """
+        Request signature for multiple actions using MPC
+
+        Args:
+            contract_id: Target contract for the actions
+            actions_json: JSON string of actions to be signed
+            proxy_account_id: Account ID of the proxy contract
+
+        Returns:
+            Dict: Response from the proxy contract
+        """
         try:
-            result = await self._call_contract(proxy_account_id, request.dict())
-            success_value = result.status.get("SuccessValue")
-            logger.info(f"Successfully requested signature: {success_value}")
-            return self._decode_success_value(success_value)
+            # Get latest block hash if not provided
+            block_hash = await self._fetch_latest_block_hash()
+
+            # Create signature request
+            signature_request = MultiActionSignatureRequest(
+                contract_id=contract_id,
+                actions_json=actions_json,
+                nonce=self._get_next_nonce(proxy_account_id),
+                block_hash=block_hash,
+                mpc_signer_pk=self._derived_key,
+                account_pk_for_mpc=self._account_public_key,
+            )
+
+            logger.debug(
+                f"Requesting multi-action signature for contract {contract_id}"
+            )
+
+            # Call proxy contract
+            response = await self._call_contract(
+                proxy_account_id, "request_signature", signature_request.dict()
+            )
+
+            return response
+
         except Exception as e:
-            logger.error(f"Signature request failed: {str(e)}", exc_info=True)
+            logger.error(f"Failed to request multi-action signature: {str(e)}")
             raise
 
     async def _request_intent_signature(
@@ -179,7 +385,7 @@ class NearMpcClient:
             DEFAULT_ATTACHED_GAS = 100 * TGAS
 
             # Create signature request with cleaned intent
-            signature_request = SignatureRequest(
+            signature_request = SignMessageSignatureRequest(
                 contract_id=intent.verifying_contract,
                 args=json.dumps(intent.dict()),
                 deposit=str(DEFAULT_ATTACHED_GAS),
@@ -190,10 +396,14 @@ class NearMpcClient:
             )
 
             # Request signature
-            result = await self.request_signature(proxy_account_id, signature_request)
-            return result
+            result = await self._call_contract(
+                proxy_account_id, "request_sign_message", signature_request.dict()
+            )
+            success_value = result.status.get("SuccessValue")
+            logger.info(f"Successfully requested signature: {success_value}")
+            return self._decode_success_value(success_value)
         except Exception as e:
-            logger.error(f"Failed to publish swap intent: {str(e)}", exc_info=True)
+            logger.error(f"Signature request failed: {str(e)}", exc_info=True)
             raise
 
     async def sign_intent(
@@ -238,7 +448,7 @@ class NearMpcClient:
             signature = await self._request_intent_signature(
                 proxy_account_id, intent, block_hash
             )
-            signature = "secp256k1:" + signature
+            signature = "ed25519:" + signature
 
             result = {
                 "signature": signature,
@@ -253,7 +463,9 @@ class NearMpcClient:
             logger.error(f"Intent creation failed: {str(e)}", exc_info=True)
             raise
 
-    async def _call_contract(self, proxy_account_id: str, params: dict) -> dict:
+    async def _call_contract(
+        self, proxy_account_id: str, method_name: str, params: dict
+    ) -> dict:
         """Signed as the agentic account, this function sends a transaction for an MPC signature request to the user's proxy account."""
         try:
             agent_account = Account(
@@ -261,10 +473,10 @@ class NearMpcClient:
             )
             await agent_account.startup()
 
-            logger.info(f"Calling contract with params: {params}")
+            logger.debug(f"Calling contract with params: {params}")
             result = await agent_account.function_call(
                 proxy_account_id,
-                "request_signature",
+                method_name,
                 args=params,
                 gas=100000000000000,  # 100 TGas
                 amount=1,

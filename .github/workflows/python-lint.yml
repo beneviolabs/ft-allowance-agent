@@ -1,6 +1,7 @@
 name: python-lint
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '**/*.py'
@@ -9,6 +10,9 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 0.0.1
     steps:
       - uses: actions/checkout@v4
 
@@ -25,8 +29,8 @@ jobs:
       - name: Run linter
         run: |
           # Run Ruff linter
-          ruff check --config 0.0.1/pyproject.toml .
+          ruff check --config pyproject.toml .
           # Run Ruff formatter
-          ruff format --config 0.0.1/pyproject.toml . --check
+          ruff format --config pyproject.toml . --check
 
       # TODO: Introduce mypy or other static type checker eventually

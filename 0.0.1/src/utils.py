@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -9,14 +10,14 @@ from typing import Dict, List, NewType, Tuple, TypedDict, Union
 
 import aiohttp
 import base58
-
-# import near_api
 import requests
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from dotenv import load_dotenv
 
 # from src.models import SignatureRequest
 # from src.client import NearMpcClient
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://solver-relay-v2.chaindefuser.com/rpc"
 TGAS = 1_000_000_000_000
@@ -386,14 +387,14 @@ def publish_intent(signed_intent):
     return response.json()
 
 
-async def main():
+def old_demo_of_manual_swaps():
     # Create a publish_wnear_intent.json payload for the publish_intent call
     deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)).strftime(
         "%Y-%m-%dT%H:%M:%S.000Z"
     )
 
     # Get Quotes for USDT
-    best_quote = await get_usdt_quotes({"nep141:wrap.near": 1 * ONE_NEAR})
+    # best_quote = await get_usdt_quotes({"nep141:wrap.near": 1 * ONE_NEAR})
     best_quote = best_quote[0][1]
     print("Best USDT Quote:", best_quote)
 
@@ -414,7 +415,6 @@ async def main():
     #
     # publish_payload = sign_quote(payload)
 
-    # TODO test client methods
     # client = NearMpcClient(network="mainnet")
 
     # client.derive_mpc_key("agent.charleslavon.near")
@@ -422,17 +422,87 @@ async def main():
     # signed_intent = await client.sign_intent("agent.charleslavon.near", best_quote["token_in"], best_quote["token_out"], best_quote["amount_in"], best_quote["amount_out"], best_quote["quote_hash"], best_quote["expiration_time"], nonce_base64)
     ##
     # publish_payload = Commitment(
-    #    standard="raw_ed25519", ## TODO start here, what standard to use?
+    #    standard="raw_ed25519",
     #    payload=json.dumps(signed_intent.get("intent")),
     #    signature=signed_intent.get("signature"),
     #    public_key=signed_intent.get("public_key")
     # )
-    #
-    publish_payload = PublishIntent(
-        signed_data=publish_payload, quote_hashes=[best_quote.get("quote_hash")]
-    )
-
-    print(publish_intent(publish_payload))
 
 
-# asyncio.run(main())
+#
+# publish_payload = PublishIntent(signed_data=publish_payload, quote_hashes=[
+#                                    best_quote.get("quote_hash")])
+
+# print(publish_intent(publish_payload))
+
+
+async def demo_quote():
+    """Demonstrate OneClick API quote functionality"""
+    from .client import NearMpcClient
+
+    client = NearMpcClient(network="mainnet")
+    dry = True
+    try:
+        quotes = await client.get_stablecoin_quotes(
+            "nep141:wrap.near",
+            "500000000000000000000000",
+            "agent.charleslavon.near",
+            dry,
+        )
+
+        depopsitAddress = quotes["USDC"].quote.get("depositAddress")
+        amount_in = quotes["USDC"].quoteRequest.get("amount")
+        print(f"Amount in: {amount_in}")
+        print(f"Deposit address: {depopsitAddress}")
+
+        msg = {"receiver_id": depopsitAddress}
+
+        actions = [
+            {
+                "type": "FunctionCall",
+                "method_name": "near_deposit",
+                "deposit": str(amount_in),
+                "gas": "50000000000000",
+                "args": {},
+            }
+        ]
+
+        if not dry:
+            actions.append(
+                {
+                    "type": "FunctionCall",
+                    "method_name": "ft_transfer_call",
+                    "deposit": "1",
+                    "args": {
+                        "receiver_id": "intents.near",
+                        "amount": str(amount_in),
+                        "msg": json.dumps(msg),
+                    },
+                    "gas": "50000000000000",
+                }
+            )
+
+        actions_json = json.dumps(actions)
+
+        logger.debug(f"request payload: {actions_json}")
+
+        siggy = await client._request_multi_action_signature(
+            "wrap.near", actions_json, "agent.charleslavon.near"
+        )
+
+        print(f"Signature: {siggy}")
+
+        # await client.oneclickapi.check_transaction_status("7d1eaa39006bcec14a040cdd10f876be458dc222e0dced46057bd0a036c36f08")
+
+        # supported_tokens = await client.oneclickapi.get_supported_tokens()
+        # print(f"Supported tokens: {supported_tokens}")
+
+        if not dry:
+            deposit_address = quotes["USDC"].quote.get("depositAddress")
+            print(f"Deposit address: {deposit_address}")
+
+            status = await client.oneclickapi.check_transaction_status(deposit_address)
+            print(f"Transaction status: {status}")
+
+    finally:
+        await client.close()

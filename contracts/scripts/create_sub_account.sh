@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-INITIAL_BALANCE="0.1"
+INITIAL_BALANCE="1"
 
 # Check if parent account is provided
 if [ -z "$1" ]; then
