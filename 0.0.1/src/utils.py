@@ -1,17 +1,12 @@
 import asyncio
-import base64
 import json
 import logging
 import os
-import secrets
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from typing import Dict, List, NewType, Tuple, TypedDict, Union
 
 import aiohttp
-import base58
+from decimal import Decimal
 import requests
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from dotenv import load_dotenv
 
 # from src.models import SignatureRequest
@@ -26,54 +21,11 @@ ONE_NEAR = 1_000_000_000_000_000_000_000_000
 
 
 load_dotenv()
-# AccountId = os.getenv("ACCOUNT_ID")
-# PrivKey = os.getenv("FA_PRIV_KEY")
-# if AccountId is None or PrivKey is None:
-#    raise EnvironmentError(
-#        "ACCOUNT_ID and FA_PRIV_KEY must be set in environment variables")
-# acc = Account(AccountId, PrivKey)
-
-
-def get_account():
-    near_provider = near_api.providers.JsonProvider("https://rpc.mainnet.near.org")
-    key_pair = near_api.signer.KeyPair(PrivKey)
-    signer = near_api.signer.Signer(AccountId, key_pair)
-    return near_api.account.Account(near_provider, signer, AccountId)
-
 
 def yocto_to_near(amount: str) -> float:
     """Convert yoctoNEAR string to NEAR float"""
     return float(Decimal(amount) / ONE_NEAR)
 
-
-def near_to_yocto(amount: float) -> str:
-    """Convert NEAR amount to yoctoNEAR string"""
-    return str(int(Decimal(str(amount)) * ONE_NEAR))
-
-
-def format_token_amount(amount: float, decimals: int) -> str:
-    """Format token amount with proper decimals"""
-    return str(int(Decimal(str(amount)) * Decimal(str(10**decimals))))
-
-
-ASSET_MAP = {
-    "USDC": {
-        "token_id": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
-        "omft": "eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near",
-        "decimals": 6,
-    },
-    "USDT": {
-        "token_id": "nep141:usdt.tether-token.near",
-        "decimals": 6,
-    },
-    "NEAR": {
-        "token_id": "wrap.near",
-        "decimals": 24,
-    },
-}
-
-
-# TODO refactor to make use of ASSET_MAP
 def get_usdc_token_out_type(token_in):
     # usdc address may vary per token_in_id, e.g. for token_in_id:
     # "nep141:eth.omft.near", USDC tokenOut should be
@@ -337,103 +289,6 @@ class Quote(TypedDict):
     verifying_contract: str
     deadline: str
     intents: List[Intent]
-
-
-def sign_quote(quote: dict) -> Commitment:
-    print(f"Signing quote: {quote}")
-    quote_str = json.dumps(quote)
-    account = get_account()
-    signature = "ed25519:" + base58.b58encode(
-        account.signer.sign(quote_str.encode("utf-8"))
-    ).decode("utf-8")
-    public_key = "ed25519:" + base58.b58encode(account.signer.public_key).decode(
-        "utf-8"
-    )
-    print(f"Account signer public key: {public_key}")
-    try:
-        check_pub_key = ed25519.Ed25519PublicKey.from_public_bytes(
-            account.signer.public_key
-        )
-        check_pub_key.verify(
-            base58.b58decode(signature[8:]), json.dumps(quote).encode("utf-8")
-        )
-        print("Signature is valid. {signature}")
-    except ed25519.InvalidSignature:
-        print("Invalid signature.")
-
-    return Commitment(
-        standard="raw_ed25519",
-        payload=quote_str,
-        signature=signature,
-        public_key=public_key,
-    )
-
-
-def publish_intent(signed_intent):
-    print(f"Publishing intent: {json.dumps(signed_intent)}")
-    """Publishes the signed intent to the solver bus."""
-    try:
-        rpc_request = {
-            "id": "benevio.dev",
-            "jsonrpc": "2.0",
-            "method": "publish_intent",
-            "params": [signed_intent],
-        }
-        response = requests.post(
-            "https://solver-relay-v2.chaindefuser.com/rpc", json=rpc_request
-        )
-    except requests.RequestException as e:
-        print(f"Error publishing intent {e}")
-    return response.json()
-
-
-def old_demo_of_manual_swaps():
-    # Create a publish_wnear_intent.json payload for the publish_intent call
-    deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)).strftime(
-        "%Y-%m-%dT%H:%M:%S.000Z"
-    )
-
-    # Get Quotes for USDT
-    # best_quote = await get_usdt_quotes({"nep141:wrap.near": 1 * ONE_NEAR})
-    best_quote = best_quote[0][1]
-    print("Best USDT Quote:", best_quote)
-
-    # Generate a random nonce
-    nonce_base64 = base64.b64encode(
-        secrets.randbits(256).to_bytes(32, byteorder="big")
-    ).decode("utf-8")
-
-    # payload = Quote(signer_id=AccountId,
-    #                nonce=nonce_base64,
-    #                verifying_contract="intents.near",
-    #                deadline=deadline,
-    #                intents=[{"intent": "token_diff",
-    #                          "diff": {best_quote.get("token_in"): "-" + str(best_quote.get("amount_in")),
-    #                                   best_quote.get("token_out"): str(best_quote.get("amount_out"))},
-    #                          "referral": "benevio-labs.near"},
-    #                       ])
-    #
-    # publish_payload = sign_quote(payload)
-
-    # client = NearMpcClient(network="mainnet")
-
-    # client.derive_mpc_key("agent.charleslavon.near")
-
-    # signed_intent = await client.sign_intent("agent.charleslavon.near", best_quote["token_in"], best_quote["token_out"], best_quote["amount_in"], best_quote["amount_out"], best_quote["quote_hash"], best_quote["expiration_time"], nonce_base64)
-    ##
-    # publish_payload = Commitment(
-    #    standard="raw_ed25519",
-    #    payload=json.dumps(signed_intent.get("intent")),
-    #    signature=signed_intent.get("signature"),
-    #    public_key=signed_intent.get("public_key")
-    # )
-
-
-#
-# publish_payload = PublishIntent(signed_data=publish_payload, quote_hashes=[
-#                                    best_quote.get("quote_hash")])
-
-# print(publish_intent(publish_payload))
 
 
 async def demo_quote():
