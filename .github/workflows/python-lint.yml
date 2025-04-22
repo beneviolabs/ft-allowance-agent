@@ -1,6 +1,7 @@
 name: python-lint
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '**/*.py'
