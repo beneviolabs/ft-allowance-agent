@@ -1,3 +1,4 @@
+alembic==1.15.2
 ipython==9.1.0
 # lint and format
 ruff==0.11.6

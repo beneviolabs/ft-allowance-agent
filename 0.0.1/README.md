@@ -1,8 +1,8 @@
-## setup
+## Setup
 
 This is the Python source code.
 
-1. Create a wallet if you don't have one via [Bitte](https://wallet.bitte.ai)
+1. Create a wallet if you don't have one via [Bitte](https://wallet.bitte.ai).
 
 1. Sign up on [near.ai](https://app.near.ai/) with your Bitte wallet.
 
@@ -37,16 +37,31 @@ This is the Python source code.
 
 1. Install NEAR CLI via this [link](https://docs.near.org/tools/near-cli) and connect our test agent account
 
-```
-near account import-account benevio-labs.testnet
-```
+   ```
+   near account import-account benevio-labs.testnet
+   ```
+
+1. Ensure you have Postgres (>=v16) installed and running and create a database called `allowance_db`:
+
+   ```sh
+   psql -U <your-pg-user> -c "CREATE DATABASE allowance_db;"
+   ```
+
+   > Your PG admin is usually `postgres` and the password `postgres`.
 
 1. Generate a private key and set the following in your env vars
 
-```
-export AGENT_ACCOUNT_ID="benevio-labs.testnet"
-export AGENT_SECRET_KEY="<secret-key-from-previous-step>"
-```
+   ```sh
+   export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/allowance_db"
+   export AGENT_ACCOUNT_ID="benevio-labs.testnet"
+   export AGENT_SECRET_KEY="<secret-key-from-previous-step>"
+   ```
+
+1. Run the migrations
+
+   ```sh
+   alembic upgrade head
+   ```
 
 1. Copy `metadata.dev.json` into `metadata.json`.
 
