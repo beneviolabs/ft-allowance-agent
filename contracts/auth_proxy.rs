@@ -311,7 +311,7 @@ impl ProxyContract {
         near_sdk::env::log_str(&format!(
             "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
             contract_id,
-            self.owner_id,
+            env::current_account_id(),
             omni_actions,
             nonce.0,
             block_hash
