@@ -424,7 +424,7 @@ impl ProxyContract {
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &near_tx_signed);
         near_sdk::env::log_str(&format!("Signed transaction (base64): {}", base64_tx));
 
-        siggy_base58
+        base64_tx
     }
 
     pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
