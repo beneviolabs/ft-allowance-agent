@@ -36,6 +36,7 @@ class Agent:
         self.recommended_tokens = None
         self._growth_goal = None
         self.near_account_balance = None
+        self._near_deposit_address = None
         self._client = NearMpcClient(network=env.env_vars["network"], env=env)
         set_environment(env)
         tool_registry = self.env.get_tool_registry()
@@ -46,6 +47,7 @@ class Agent:
         tool_registry.register_tool(self.get_near_account_balance)
         tool_registry.register_tool(self.fetch_token_prices)
         tool_registry.register_tool(self.execute_stablecoin_swap)
+        tool_registry.register_tool(self.get_intent_transaction_status)
 
         config = LOCAL_NEAR_AI_CONFIG.client_config()
         self.env.add_system_log(f"Using Near AI config: {config}", logging.DEBUG)
@@ -270,6 +272,24 @@ Output:
 }
 
 --Example 5--
+User: "What is the status of my transaction?"
+Output:
+{
+    "id": "example_msg_5",
+    "role": "example_assistant",
+    "content": "",
+    "tool_calls": [
+        {
+            "id": "call_1",
+            "name": "get_intent_transaction_status",
+            "arguments": {
+                "deposit_address": "deposit_address_value"
+            },
+        },
+    ],
+}
+
+--Example 6--
 User: "Hello."
 Output: "noop"
 """,
@@ -404,7 +424,7 @@ Output: "noop"
                 "Considering your options with a preference for holding BTC..."
             )
             near_balance = yocto_to_near(get_near_account_balance(self.near_account_id))
-            self.recommended_tokens =   get_recommended_token_allocations(
+            self.recommended_tokens = get_recommended_token_allocations(
                 self.allowance_goal, {"NEAR": near_balance}
             )
 
@@ -429,10 +449,21 @@ Output: "noop"
                 "Please provide a valid goal amount and specify whether it's a growth or allowance goal.",
             )
 
+    def _get_near_deposit_address(self) -> str | None:
+        """Get the NEAR deposit address for the user."""
+        if self._near_deposit_address is None:
+            self._near_deposit_address = self.env.read_file("near_deposit_address.txt")
+        return self._near_deposit_address
+
     def _persist_near_id(self, near_id: str):
         """Persist the NEAR account ID to storage and set it to the class instance variable"""
         self.env.write_file("near_id.txt", near_id)
         self._near_account_id = near_id
+
+    def _persist_near_deposit_address(self, deposit_address: str) -> None:
+        """Persist the deposit address for near tokens into storage and set it to the class instance variable"""
+        self.env.write_file("near_deposit_address.txt", deposit_address)
+        self._near_deposit_address = deposit_address
 
     def _persist_goal(self, goal: int, type_: DivvyGoalType) -> None:
         """Persist the growth or allowance goal to storage and set it to the class instance variable"""
@@ -447,14 +478,15 @@ Output: "noop"
         """Execute a swap of NEAR tokens for stablecoins (USDC/USDT) to meet allowance goal.
 
         This method performs a multi-step process to swap NEAR tokens for stablecoins:
-        1. Validates required data (account ID and allowance goal)
+        1. Validates required allowance goal
         2. Gets recommended token allocations if not already present
         3. Fetches quotes for both USDC and USDT swaps
         4. Selects the best quote based on minimum amount out (accounting for slippage)
-        5. Executes the swap on intents.near by:
+        5. Request a signature for a transaction with two actions:
             - Depositing NEAR to wrap.near contract
             - Calling ft_transfer_call with appropriate deposit address
-        6. Monitors and returns transaction status
+        6. Initiates the swap on intents.near publishing the signed transaction
+        7. Monitors and returns transaction status
 
         Key Components:
         - Uses wrapped NEAR (nep141:wrap.near) as the input token
@@ -462,8 +494,6 @@ Output: "noop"
         - Handles multi-action transaction signing through proxy account
         - Includes slippage protection via minAmountOut parameter
 
-        Returns:
-             str: Transaction status after swap initiation
         """
 
         # Ensure we have an allowance goal
@@ -487,7 +517,7 @@ Output: "noop"
             return "No recommended tokens found. Cannot proceed with the swap."
 
         self.env.add_system_log(
-            f"recc tokens: {recommended_tokens}",
+            f"recommended tokens: {recommended_tokens}",
             logging.DEBUG,
         )
 
@@ -523,6 +553,8 @@ Output: "noop"
                 logging.ERROR,
             )
             return msg
+        self._persist_near_deposit_address(deposit_address)
+
         # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
 
         # Create a signature request for the multi-action transaction to send the swap from token to near intents.
@@ -548,10 +580,29 @@ Output: "noop"
 
         # Monitor status
         status = self._client.oneclickapi.check_transaction_status(deposit_address)
+        message = f"The swap was initiated, and the transaction's status is  {status.get('status')}."
 
-        self.env.add_system_log(f"Swap initiated - Status: {status}", logging.INFO)
+        self.env.add_system_log(f"Swap initiated - Status: {status}", logging.DEBUG)
 
-        return status
+        return message
+
+    def get_intent_transaction_status(self) -> str:
+        """Get the status of a transaction using its hash."""
+
+        if not self._near_deposit_address:
+            self._get_near_deposit_address()
+
+        status = self._client.oneclickapi.check_transaction_status(
+            self._near_deposit_address
+        )
+        if status:
+            return f"The transaction status is {status.get('status')}."
+        else:
+            self.env.add_system_log(
+                f"Unable to fetch the transaction status for {self._near_deposit_address}",
+                logging.ERROR,
+            )
+            return "Unable to fetch the transaction status."
 
 
 if globals().get("env", None):
