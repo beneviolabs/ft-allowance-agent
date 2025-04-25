@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from .log_adapter import LoggerAdapter
 import os
 from typing import Dict, List, NewType, Tuple, TypedDict, Union
 
@@ -12,19 +13,28 @@ from dotenv import load_dotenv
 # from src.models import SignatureRequest
 # from src.client import NearMpcClient
 
-logger = logging.getLogger(__name__)
+logger = LoggerAdapter()
 
 BASE_URL = "https://solver-relay-v2.chaindefuser.com/rpc"
 TGAS = 1_000_000_000_000
 DEFAULT_ATTACHED_GAS = 100 * TGAS
 ONE_NEAR = 1_000_000_000_000_000_000_000_000
 
-
 load_dotenv()
+
+def set_environment(env):
+    """Set environment for logging"""
+    global logger
+    logger = LoggerAdapter(env)
 
 def yocto_to_near(amount: str) -> float:
     """Convert yoctoNEAR string to NEAR float"""
     return float(Decimal(amount) / ONE_NEAR)
+
+def near_to_yocto(amount: str) -> str:
+    """Convert NEAR float to yoctoNEAR string"""
+    return int(Decimal(amount) * ONE_NEAR)
+
 
 def get_usdc_token_out_type(token_in):
     # usdc address may vary per token_in_id, e.g. for token_in_id:
@@ -241,14 +251,68 @@ async def get_quotes(
 
     return quotes, best_usd_value
 
+def build_deposit_and_transfer_actions(token_in_address: str, amount_in: str, deposit_address: str) -> str:
+    """
+    Build JSON string of actions for wrapping NEAR and transferring to intents.near
 
-def get_recommended_token_allocations(target_usd_amount: float):
+    Args:
+        amount_in: Amount of NEAR to wrap and transfer (in yoctoNEAR)
+        deposit_address: Destination address for the transfer
+        token_in_address: Address of the swap from token.
+
+    Returns:
+        str: JSON string containing the actions array
+    """
+    deposit_action = None
+    if token_in_address == "wrap.near":
+        deposit_action = {
+            "type": "FunctionCall",
+            "method_name": "near_deposit",
+            "deposit": str(amount_in),
+            "gas": "50000000000000",
+            "args": {},
+        }
+    else:
+        # Handle other contract addresses, e.g. ETH, SOL
+        raise ValueError(f"Unsupported contract address: {token_in_address}")
+
+    actions = [
+        deposit_action,
+        {
+            "type": "FunctionCall",
+            "method_name": "ft_transfer_call",
+            "args": {
+                "receiver_id": "intents.near",
+                "amount": str(amount_in),
+                "msg": json.dumps({"receiver_id": deposit_address}),
+            },
+            "gas": "50000000000000",
+            "deposit": "1",
+        },
+    ]
+    return json.dumps(actions)
+
+def usd_to_base6(amount: float) -> str:
+    """
+    Convert USD amount to base6 string.
+
+    Args:
+        amount: Amount in USD
+
+    Returns:
+        str: Amount in base6 format
+    """
+    return str(int(amount * 100_000))
+
+def get_recommended_token_allocations(target_usd_amount: float, tokenBalances: dict) -> Union[dict, None]:
+    logger.debug(f"Target USD amount: {target_usd_amount}")
+    target_usd_amount = usd_to_base6(target_usd_amount)
+    logger.debug(f"Target USD amount: {target_usd_amount}")
+
     try:
         params = {
-            "targetUsdAmount": target_usd_amount * 1000000,
-            "tokenBalances": json.dumps(
-                {"BTC": 0.08, "ETH": 0.5, "SOL": 4.2, "NEAR": 330.42928}
-            ),
+            "targetUsdAmount": target_usd_amount,
+            "tokenBalances": json.dumps(tokenBalances),
         }
 
         swap_service_url = os.environ.get("swap_allocations_worker")
