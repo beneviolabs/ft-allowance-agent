@@ -17,12 +17,13 @@
         "env_vars": {
             "network": "mainnet",
             "agent_account_id": "benevio-labs.near",
-            "swap_allocations_worker": "https://ft-allowance-allocations.hello-d1f.workers.dev/"
+            "swap_allocations_worker": "https://ft-allowance-allocations.hello-d1f.workers.dev/",
+            "near_call_worker": "https://near-funcion-call-prod.hello-d1f.workers.dev/"
         },
         "agent": {
             "framework": "standard",
             "defaults": {
-                "model": "llama-v3p1-70b-instruct",
+                "model": "llama-v3p1-405B-instruct",
                 "model_provider": "fireworks",
                 "model_temperature": 0.5,
                 "model_max_tokens": 16384

@@ -8,7 +8,8 @@
     "env_vars": {
       "network": "testnet",
       "agent_account_id": "benevio-labs.testnet",
-      "swap_allocations_worker": "https://ft-allowance-allocations.hello-d1f.workers.dev/"
+      "swap_allocations_worker": "http://localhost:8787",
+      "near_call_worker": "https://localhost:3487/"
     },
     "agent": {
       "framework": "standard",
