@@ -4,7 +4,6 @@ import logging
 import re
 import traceback
 import typing
-from decimal import Decimal
 from types import SimpleNamespace
 
 from nearai_langchain.local_config import LOCAL_NEAR_AI_CONFIG
@@ -13,10 +12,13 @@ from nearai.agents.environment import ChatCompletionMessageToolCall, Environment
 from src.client import NearMpcClient
 from src.fewshots import ALL_FEWSHOT_SAMPLES
 from src.utils import (
+    build_deposit_and_transfer_actions,
     fetch_coinbase,
     fetch_coingecko,
     get_near_account_balance,
     get_recommended_token_allocations,
+    near_to_yocto,
+    set_environment,
     yocto_to_near,
 )
 
@@ -34,7 +36,8 @@ class Agent:
         self.recommended_tokens = None
         self._growth_goal = None
         self.near_account_balance = None
-        self._client = NearMpcClient(network=env.env_vars["network"])
+        self._client = NearMpcClient(network=env.env_vars["network"], env=env)
+        set_environment(env)
         tool_registry = self.env.get_tool_registry()
         tool_registry.register_tool(self.recommend_token_swaps)
         tool_registry.register_tool(self.get_near_account_id)
@@ -42,6 +45,7 @@ class Agent:
         tool_registry.register_tool(self.save_goal)
         tool_registry.register_tool(self.get_near_account_balance)
         tool_registry.register_tool(self.fetch_token_prices)
+        tool_registry.register_tool(self.execute_stablecoin_swap)
 
         config = LOCAL_NEAR_AI_CONFIG.client_config()
         self.env.add_system_log(f"Using Near AI config: {config}", logging.DEBUG)
@@ -250,6 +254,22 @@ Output:
 }
 
 --Example 4--
+User: "Swap NEAR for stables"
+Output:
+{
+    "id": "example_msg_4",
+    "role": "example_assistant",
+    "content": "",
+    "tool_calls": [
+        {
+            "id": "call_1",
+            "name": "execute_stablecoin_swap",
+            "arguments": {},
+        },
+    ],
+}
+
+--Example 5--
 User: "Hello."
 Output: "noop"
 """,
@@ -384,9 +404,8 @@ Output: "noop"
             self.env.add_reply(
                 "Considering your options with a preference for holding BTC..."
             )
-            self.recommended_tokens = get_recommended_token_allocations(
-                self.allowance_goal
-            )
+            near_balance = yocto_to_near(get_near_account_balance(self.near_account_id))
+            self.recommended_tokens = self.client.get_recommended_token_allocations(self.allowance_goal, {"NEAR": near_balance})
 
         result = ", ".join(
             f"{key}: {value}" for key, value in self.recommended_tokens.items()
@@ -423,7 +442,8 @@ Output: "noop"
         if type_ == "growth":
             self._growth_goal = int(goal)
 
-    async def execute_stablecoin_swap(self):
+
+    def execute_stablecoin_swap(self):
         """Execute a swap of NEAR tokens for stablecoins (USDC/USDT) to meet allowance goal.
 
         This method performs a multi-step process to swap NEAR tokens for stablecoins:
@@ -446,79 +466,74 @@ Output: "noop"
              str: Transaction status after swap initiation
         """
 
-        # Ensure we have account ID
-        if not self.near_account_id:
-            return "Unable to fetch balance because user hasn't provided NEAR account ID. Ask them to provide it."
-
         # Ensure we have an allowance goal
         if not self.allowance_goal:
             return "The user needs their allowance goal set to execute a swap. Prompt them to provide one."
 
-        # Ensure we have recommended tokens
-        if not self.recommended_tokens:
+
+        near_balance = get_near_account_balance(self.near_account_id)
+        self.env.add_system_log(
+            f"Near balance: {yocto_to_near(near_balance)} in yocto: {near_balance}",
+            logging.DEBUG,
+        )
+        recommended_tokens = get_recommended_token_allocations(self.allowance_goal, {"NEAR": yocto_to_near(near_balance)})
+
+        if recommended_tokens is None:
             self.env.add_system_log(
-                "Recommended tokens not found. Fetching swap options now...",
+                "No recommended tokens found. Cannot proceed with the swap.",
+                logging.ERROR,
+            )
+            return "No recommended tokens found. Cannot proceed with the swap."
+
+
+        self.env.add_system_log(
+                f"recc tokens: {recommended_tokens}",
                 logging.DEBUG,
             )
-            self.recommend_token_allocations_to_swap_for_stablecoins()
 
         # Get quotes for both USDC and USDT
-        amount_in = self.recommended_tokens.get("NEAR", 0)
+        amount_in = near_to_yocto(recommended_tokens.get("NEAR", 0))
+        if amount_in <= 0:
+            self.env.add_system_log(
+                "No NEAR tokens available for swap. Cannot proceed with the swap.",
+                logging.ERROR,
+            )
+            return "No NEAR tokens available for swap. Cannot proceed with the swap."
         self.env.add_system_log(
             f"Fetching quotes to swap {amount_in} Near for USDC/USDT", logging.DEBUG
         )
 
-        quotes = await self._client.get_stablecoin_quotes(
-            "nep141:wrap.near", amount_in, self.near_account_id
+        proxy_account_id = "agent." + self.near_account_id
+
+        # Fetch quotes for USDC and USDT
+        quotes = self._client.get_stablecoin_quotes(
+            "nep141:wrap.near", amount_in, proxy_account_id, dry=False
         )
 
-        # Choose best quote between USDC and USDT based on minimum amount out with slippage taken into account
-        best_quote = None
-        if quotes.get("USDC") and quotes.get("USDT"):
-            usdc_amount = Decimal(quotes["USDC"].quote.get("minAmountOut", 0))
-            usdt_amount = Decimal(quotes["USDT"].quote.get("minAmountOut", 0))
-            best_quote = quotes["USDC"] if usdc_amount > usdt_amount else quotes["USDT"]
-        elif quotes.get("USDC"):
-            best_quote = quotes["USDC"]
-        elif quotes.get("USDT"):
-            best_quote = quotes["USDT"]
-
-        if not best_quote:
-            self.env.add_system_log("No valid quotes received", logging.ERROR)
-            return
+        best_quote = self._client.select_best_stablecoin_quote(quotes)
 
         # Log the best quote
         self.env.add_system_log(f"Best quote: {best_quote.quote}", logging.DEBUG)
 
-        # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
         deposit_address = best_quote.quote.get("depositAddress")
+        if deposit_address is None:
+            msg = "No deposit address found in the best quote. Cannot proceed with the swap."
+            self.env.add_system_log(
+                msg,
+                logging.ERROR,
+            )
+            return msg
+        # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
 
-        # Create a signature request for deposit and ft_transfer_call
-        # TODO move the building of the actions payload into a utility function
-        actions = [
-            {
-                "type": "FunctionCall",
-                "method_name": "near_deposit",
-                "deposit": str(amount_in),
-                "gas": "50000000000000",
-                "args": {},
-            },
-            {
-                "type": "FunctionCall",
-                "method_name": "ft_transfer_call",
-                "args": {
-                    "receiver_id": "intents.near",
-                    "amount": str(amount_in),
-                    "msg": json.dumps({"receiver_id": deposit_address}),
-                },
-                "gas": "50000000000000",
-            },
-        ]
-        actions_json = json.dumps(actions)
-        proxy_account_id = "agent." + self.near_account_id
 
-        result = await self._client._request_multi_action_signature(
-            "wrap.near", actions_json, proxy_account_id
+        # Create a signature request for the multi-action transaction to send the swap from token to near intents.
+        swap_from_token_address = "wrap.near"
+        actions_json = build_deposit_and_transfer_actions(swap_from_token_address, amount_in, deposit_address)
+        self.env.add_system_log(
+            f"Creating signature request for {proxy_account_id} with actions: {actions_json}", logging.DEBUG
+        )
+        result = self._client._request_multi_action_signature(
+            swap_from_token_address, actions_json, proxy_account_id
         )
         self.env.add_system_log(f"Got signature result: {result}", logging.DEBUG)
         if not result:
@@ -530,7 +545,7 @@ Output: "noop"
         # TODO Publish the signed transactions
 
         # Monitor status
-        status = await self._client.check_transaction_status(deposit_address)
+        status = self._client.oneclickapi.check_transaction_status(deposit_address)
 
         self.env.add_system_log(f"Swap initiated - Status: {status}", logging.INFO)
 
