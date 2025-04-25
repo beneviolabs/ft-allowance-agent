@@ -1,3 +1,4 @@
+import base64
 import inspect
 import json
 import logging
@@ -18,6 +19,7 @@ from src.utils import (
     get_near_account_balance,
     get_recommended_token_allocations,
     near_to_yocto,
+    publish_transaction,
     set_environment,
     yocto_to_near,
 )
@@ -316,7 +318,9 @@ Output: "noop"
         """Get the Near account details including the NEAR token balance for a user's account."""
         balance = None
         if self.near_account_id:
-            balance = get_near_account_balance(self.near_account_id)
+            balance = get_near_account_balance(
+                self.env.env_vars["network"], self.near_account_id
+            )
             if balance:
                 self.near_account_balance = yocto_to_near(balance)
             self.env.add_reply("Found the user's balance", message_type="system")
@@ -423,7 +427,11 @@ Output: "noop"
             self.env.add_reply(
                 "Considering your options with a preference for holding BTC..."
             )
-            near_balance = yocto_to_near(get_near_account_balance(self.near_account_id))
+            near_balance = yocto_to_near(
+                get_near_account_balance(
+                    self.env.env_vars["network"], self.near_account_id
+                )
+            )
             self.recommended_tokens = get_recommended_token_allocations(
                 self.allowance_goal, {"NEAR": near_balance}
             )
@@ -500,7 +508,9 @@ Output: "noop"
         if not self.allowance_goal:
             return "The user needs their allowance goal set to execute a swap. Prompt them to provide one."
 
-        near_balance = get_near_account_balance(self.near_account_id)
+        near_balance = get_near_account_balance(
+            self.env.env_vars["network"], self.near_account_id
+        )
         self.env.add_system_log(
             f"Near balance: {yocto_to_near(near_balance)} in yocto: {near_balance}",
             logging.DEBUG,
@@ -555,8 +565,6 @@ Output: "noop"
             return msg
         self._persist_near_deposit_address(deposit_address)
 
-        # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
-
         # Create a signature request for the multi-action transaction to send the swap from token to near intents.
         swap_from_token_address = "wrap.near"
         actions_json = build_deposit_and_transfer_actions(
@@ -569,14 +577,21 @@ Output: "noop"
         result = self._client._request_multi_action_signature(
             swap_from_token_address, actions_json, proxy_account_id
         )
-        self.env.add_system_log(f"Got signature result: {result}", logging.DEBUG)
-        if not result:
+
+        if result.get("status").get("SuccessValue"):
+            siggy = json.loads(
+                base64.b64decode(result["status"]["SuccessValue"]).decode("utf-8")
+            )
+
+        self.env.add_system_log(f"Got signature result: {siggy}", logging.DEBUG)
+        if not siggy:
             self.env.add_system_log(
                 "Failed to get signature for actions", logging.ERROR
             )
             return
 
-        # TODO Publish the signed transactions
+        # Publish the signed transactions
+        publish_transaction(self.env.env_vars["network"], siggy)
 
         # Monitor status
         status = self._client.oneclickapi.check_transaction_status(deposit_address)

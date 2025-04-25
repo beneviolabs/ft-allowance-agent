@@ -104,7 +104,7 @@ async def get_usdt_quotes(token_to_quantities: TokenMap) -> list:
     return await asyncio.gather(*coroutines)
 
 
-def get_near_account_balance(account_id: str) -> float:
+def get_near_account_balance(network: str, account_id: str) -> float:
     """
     Get account balance for given NEAR account ID.
 
@@ -115,7 +115,7 @@ def get_near_account_balance(account_id: str) -> float:
         float: Account balance in yoctoNEAR
     """
     response = requests.post(
-        "https://rpc.mainnet.fastnear.com",
+        f"https://rpc.{network}.fastnear.com",
         headers={"Content-Type": "application/json"},
         json={
             "jsonrpc": "2.0",
@@ -129,6 +129,43 @@ def get_near_account_balance(account_id: str) -> float:
         },
     )
     return response.json()["result"]["amount"]
+
+
+def publish_transaction(network: str, signed_transaction: str) -> dict:
+    """
+    Submit a signed transaction to the NEAR network.
+
+    Args:
+        network: NEAR network to use (mainnet, testnet)
+        signed_transaction: Base64 encoded signed transaction
+
+    Returns:
+        dict: Transaction result containing hash and other details
+
+    Raises:
+        requests.RequestException: If the RPC request fails
+    """
+    response = requests.post(
+        f"https://rpc.{network}.fastnear.com",
+        headers={"Content-Type": "application/json"},
+        json={
+            "jsonrpc": "2.0",
+            "id": "benevio.dev",
+            "method": "send_tx",
+            "params": [signed_transaction],
+        },
+    )
+
+    if response.status_code != 200:
+        raise requests.RequestException(
+            f"Failed to submit transaction: {response.text}"
+        )
+
+    result = response.json()
+    if "error" in result:
+        raise requests.RequestException(f"Transaction failed: {result['error']}")
+
+    return result["result"]
 
 
 def fetch_usd_price(url: str, parse_price: callable) -> Union[float, bool]:
@@ -270,6 +307,8 @@ def build_deposit_and_transfer_actions(
         str: JSON string containing the actions array
     """
     deposit_action = None
+
+    # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
     if token_in_address == "wrap.near":
         deposit_action = {
             "type": "FunctionCall",

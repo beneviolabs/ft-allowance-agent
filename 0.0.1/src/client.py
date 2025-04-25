@@ -565,8 +565,8 @@ class NearMpcClient:
     def _call_contract(
         self, proxy_account_id: str, method_name: str, params: dict
     ) -> dict:
-        """Signed as the agentic account, this function sends a transaction for an MPC signature request
-        to the user's proxy account."""
+        """Sends the arguments that the worker requires to create a near transaction, sign it as the agentic account, and send it to the NEAR network."""
+
         try:
             worker_url = os.environ.get("near_call_worker")
 
