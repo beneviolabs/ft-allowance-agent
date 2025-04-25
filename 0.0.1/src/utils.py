@@ -34,7 +34,7 @@ def yocto_to_near(amount: str) -> float:
     return float(Decimal(amount) / ONE_NEAR)
 
 
-def near_to_yocto(amount: str) -> str:
+def near_to_yocto(amount: str) -> int:
     """Convert NEAR float to yoctoNEAR string"""
     return int(Decimal(amount) * ONE_NEAR)
 
