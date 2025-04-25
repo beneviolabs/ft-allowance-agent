@@ -404,7 +404,7 @@ Output: "noop"
                 "Considering your options with a preference for holding BTC..."
             )
             near_balance = yocto_to_near(get_near_account_balance(self.near_account_id))
-            self.recommended_tokens = self.client.get_recommended_token_allocations(
+            self.recommended_tokens =   get_recommended_token_allocations(
                 self.allowance_goal, {"NEAR": near_balance}
             )
 
