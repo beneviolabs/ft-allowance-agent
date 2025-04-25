@@ -1,14 +1,14 @@
 import asyncio
 import json
-import logging
-from .log_adapter import LoggerAdapter
 import os
+from decimal import Decimal
 from typing import Dict, List, NewType, Tuple, TypedDict, Union
 
 import aiohttp
-from decimal import Decimal
 import requests
 from dotenv import load_dotenv
+
+from .log_adapter import LoggerAdapter
 
 # from src.models import SignatureRequest
 # from src.client import NearMpcClient
@@ -22,14 +22,17 @@ ONE_NEAR = 1_000_000_000_000_000_000_000_000
 
 load_dotenv()
 
+
 def set_environment(env):
     """Set environment for logging"""
     global logger
     logger = LoggerAdapter(env)
 
+
 def yocto_to_near(amount: str) -> float:
     """Convert yoctoNEAR string to NEAR float"""
     return float(Decimal(amount) / ONE_NEAR)
+
 
 def near_to_yocto(amount: str) -> str:
     """Convert NEAR float to yoctoNEAR string"""
@@ -251,7 +254,10 @@ async def get_quotes(
 
     return quotes, best_usd_value
 
-def build_deposit_and_transfer_actions(token_in_address: str, amount_in: str, deposit_address: str) -> str:
+
+def build_deposit_and_transfer_actions(
+    token_in_address: str, amount_in: str, deposit_address: str
+) -> str:
     """
     Build JSON string of actions for wrapping NEAR and transferring to intents.near
 
@@ -292,6 +298,7 @@ def build_deposit_and_transfer_actions(token_in_address: str, amount_in: str, de
     ]
     return json.dumps(actions)
 
+
 def usd_to_base6(amount: float) -> str:
     """
     Convert USD amount to base6 string.
@@ -304,7 +311,10 @@ def usd_to_base6(amount: float) -> str:
     """
     return str(int(amount * 100_000))
 
-def get_recommended_token_allocations(target_usd_amount: float, tokenBalances: dict) -> Union[dict, None]:
+
+def get_recommended_token_allocations(
+    target_usd_amount: float, tokenBalances: dict
+) -> Union[dict, None]:
     logger.debug(f"Target USD amount: {target_usd_amount}")
     target_usd_amount = usd_to_base6(target_usd_amount)
     logger.debug(f"Target USD amount: {target_usd_amount}")

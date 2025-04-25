@@ -303,9 +303,8 @@ Output: "noop"
         else:
             return "Unable to fetch balance because user hasn't provided NEAR account ID. Ask them to provide it."
         self.env.add_reply(
-                "Your account balance is: "
-                f"{self.near_account_balance} Near. "
-            )
+            f"Your account balance is: {self.near_account_balance} Near. "
+        )
         return self.near_account_balance
 
     # IMPROVE: this function can be parameterized to only query prices for tokens user specifies and fetch all if there's no param value
@@ -405,7 +404,9 @@ Output: "noop"
                 "Considering your options with a preference for holding BTC..."
             )
             near_balance = yocto_to_near(get_near_account_balance(self.near_account_id))
-            self.recommended_tokens = self.client.get_recommended_token_allocations(self.allowance_goal, {"NEAR": near_balance})
+            self.recommended_tokens = self.client.get_recommended_token_allocations(
+                self.allowance_goal, {"NEAR": near_balance}
+            )
 
         result = ", ".join(
             f"{key}: {value}" for key, value in self.recommended_tokens.items()
@@ -442,7 +443,6 @@ Output: "noop"
         if type_ == "growth":
             self._growth_goal = int(goal)
 
-
     def execute_stablecoin_swap(self):
         """Execute a swap of NEAR tokens for stablecoins (USDC/USDT) to meet allowance goal.
 
@@ -470,13 +470,14 @@ Output: "noop"
         if not self.allowance_goal:
             return "The user needs their allowance goal set to execute a swap. Prompt them to provide one."
 
-
         near_balance = get_near_account_balance(self.near_account_id)
         self.env.add_system_log(
             f"Near balance: {yocto_to_near(near_balance)} in yocto: {near_balance}",
             logging.DEBUG,
         )
-        recommended_tokens = get_recommended_token_allocations(self.allowance_goal, {"NEAR": yocto_to_near(near_balance)})
+        recommended_tokens = get_recommended_token_allocations(
+            self.allowance_goal, {"NEAR": yocto_to_near(near_balance)}
+        )
 
         if recommended_tokens is None:
             self.env.add_system_log(
@@ -485,11 +486,10 @@ Output: "noop"
             )
             return "No recommended tokens found. Cannot proceed with the swap."
 
-
         self.env.add_system_log(
-                f"recc tokens: {recommended_tokens}",
-                logging.DEBUG,
-            )
+            f"recc tokens: {recommended_tokens}",
+            logging.DEBUG,
+        )
 
         # Get quotes for both USDC and USDT
         amount_in = near_to_yocto(recommended_tokens.get("NEAR", 0))
@@ -525,12 +525,14 @@ Output: "noop"
             return msg
         # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
 
-
         # Create a signature request for the multi-action transaction to send the swap from token to near intents.
         swap_from_token_address = "wrap.near"
-        actions_json = build_deposit_and_transfer_actions(swap_from_token_address, amount_in, deposit_address)
+        actions_json = build_deposit_and_transfer_actions(
+            swap_from_token_address, amount_in, deposit_address
+        )
         self.env.add_system_log(
-            f"Creating signature request for {proxy_account_id} with actions: {actions_json}", logging.DEBUG
+            f"Creating signature request for {proxy_account_id} with actions: {actions_json}",
+            logging.DEBUG,
         )
         result = self._client._request_multi_action_signature(
             swap_from_token_address, actions_json, proxy_account_id

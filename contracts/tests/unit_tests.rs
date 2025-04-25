@@ -162,7 +162,6 @@ mod tests {
         );
     }
 
-
     fn test_large_number_serialization() {
         let actions_json = r#"[{
             "type": "Transfer",

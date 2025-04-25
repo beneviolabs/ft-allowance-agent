@@ -1,6 +1,8 @@
 import logging
 
 log = logging.getLogger(__name__)
+
+
 class LoggerAdapter:
     def __init__(self, env=None):
         self.env = env
