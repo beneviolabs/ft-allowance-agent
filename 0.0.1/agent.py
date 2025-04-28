@@ -99,7 +99,7 @@ class Agent:
         prompt = {
             "role": "system",
             # Set example responses for this in the fewshots.py
-            "content": """You are Divvy, a financial assistant that helps users manage and grow their crypto portfolio.
+            "content": """You are Peerfolio, a financial assistant that helps users manage and grow their crypto portfolio.
 Your user is a crypto beginner who is looking to set up a portfolio and achieve their financial goals.
 Your context will be populated by tool call results to help you respond to the user.
 
@@ -190,7 +190,7 @@ You must follow the following instructions:
         prompt = {
             "role": "system",
             "content": """
-You are a Tool Planner for Divvy, a crypto financial assistant.
+You are a Tool Planner for Peerfolio, a crypto financial assistant.
 Your job is to analyze the user's request and decide which tools should be called to fulfill it.
 You will NOT generate any friendly language or explanations for the user. Your only job is to return a list of tool calls based on the user's intent.
 

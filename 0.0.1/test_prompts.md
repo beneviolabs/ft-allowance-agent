@@ -38,7 +38,7 @@ Format:
 ### 2.4 Get goals when none set
 >
     -> what are my goals
-    <- Hello! I'm Divvy, your financial assistant for managing and growing your crypto portfolio. I see that you haven't set any goals for your portfolio yet. Would you like to set a growth goal or an allowance goal? I'm here to help you achieve your financial objectives.
+    <- Hello! I'm Peerfolio, your financial assistant for managing and growing your crypto portfolio. I see that you haven't set any goals for your portfolio yet. Would you like to set a growth goal or an allowance goal? I'm here to help you achieve your financial objectives.
 
 ### 2.5 Set allowance goal
 >
