@@ -36,6 +36,7 @@ def yocto_to_near(amount: str) -> float:
 
 def near_to_yocto(amount: str) -> int:
     """Convert NEAR float (as a string) to yoctoNEAR integer"""
+    return int(Decimal(str(amount)) * ONE_NEAR)
 
 
 def get_usdc_token_out_type(token_in):
