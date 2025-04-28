@@ -416,6 +416,10 @@ class NearMpcClient:
         contract_id: str,
         actions_json: str,
         proxy_account_id: str,
+        message: str,
+        signature: str,
+        public_key: str,
+        nonce: str,
     ) -> Dict:
         """
         Request signature for multiple actions using MPC
@@ -449,7 +453,13 @@ class NearMpcClient:
 
             # Call proxy contract
             response = self._call_contract(
-                proxy_account_id, "request_signature", signature_request.dict()
+                proxy_account_id,
+                "request_signature",
+                signature_request.dict(),
+                message,
+                signature,
+                public_key,
+                nonce,
             )
 
             return response
@@ -563,7 +573,14 @@ class NearMpcClient:
             raise
 
     def _call_contract(
-        self, proxy_account_id: str, method_name: str, params: dict
+        self,
+        proxy_account_id: str,
+        method_name: str,
+        params: dict,
+        message: str,
+        signature: str,
+        public_key: str,
+        nonce: str,
     ) -> dict:
         """Sends the arguments that the worker requires to create a near transaction, sign it as the agentic account, and send it to the NEAR network."""
 
@@ -580,6 +597,10 @@ class NearMpcClient:
                     "proxy_account_id": proxy_account_id,
                     "method_name": method_name,
                     "params": params,
+                    "message": message,
+                    "signature": signature,
+                    "public_key": public_key,
+                    "nonce": nonce,
                 },
             )
 

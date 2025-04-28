@@ -574,8 +574,15 @@ Output: "noop"
             f"Creating signature request for {proxy_account_id} with actions: {actions_json}",
             logging.DEBUG,
         )
+        config = LOCAL_NEAR_AI_CONFIG.client_config().auth
         result = self._client._request_multi_action_signature(
-            swap_from_token_address, actions_json, proxy_account_id
+            swap_from_token_address,
+            actions_json,
+            proxy_account_id,
+            config.message,
+            config.signature,
+            config.public_key,
+            config.nonce,
         )
 
         if result.get("status").get("SuccessValue"):
