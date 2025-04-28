@@ -18,7 +18,7 @@
             "network": "mainnet",
             "agent_account_id": "benevio-labs.near",
             "swap_allocations_worker": "https://ft-allowance-allocations.hello-d1f.workers.dev/",
-            "near_call_worker": "https://near-funcion-call-prod.hello-d1f.workers.dev/"
+            "near_call_worker": "https://near-function-call-prod.hello-d1f.workers.dev/"
         },
         "agent": {
             "framework": "standard",
