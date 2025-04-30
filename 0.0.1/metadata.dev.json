@@ -1,15 +1,15 @@
 {
   "name": "test-app",
-  "version": "0.0.29",
+  "version": "0.0.1",
   "description": "testing bot",
   "category": "agent",
   "tags": [],
   "details": {
     "env_vars": {
-      "network": "testnet",
-      "agent_account_id": "benevio-labs.testnet",
-      "swap_allocations_worker": "http://localhost:8787",
-      "near_call_worker": "https://localhost:3487/"
+      "network": "mainnet",
+      "agent_account_id": "benevio-labs.near",
+      "swap_allocations_worker": "https://ft-allowance-allocations.hello-d1f.workers.dev",
+      "near_call_worker": "http://localhost:7071/api/nearCall"
     },
     "agent": {
       "framework": "standard",
