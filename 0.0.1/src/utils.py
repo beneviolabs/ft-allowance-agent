@@ -1,44 +1,32 @@
 import asyncio
-import base64
 import json
-import logging
 import os
-import secrets
-from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, NewType, Tuple, TypedDict, Union
 
 import aiohttp
-import base58
 import requests
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from dotenv import load_dotenv
+
+from .log_adapter import LoggerAdapter
 
 # from src.models import SignatureRequest
 # from src.client import NearMpcClient
 
-logger = logging.getLogger(__name__)
+logger = LoggerAdapter()
 
 BASE_URL = "https://solver-relay-v2.chaindefuser.com/rpc"
 TGAS = 1_000_000_000_000
 DEFAULT_ATTACHED_GAS = 100 * TGAS
 ONE_NEAR = 1_000_000_000_000_000_000_000_000
 
-
 load_dotenv()
-# AccountId = os.getenv("ACCOUNT_ID")
-# PrivKey = os.getenv("FA_PRIV_KEY")
-# if AccountId is None or PrivKey is None:
-#    raise EnvironmentError(
-#        "ACCOUNT_ID and FA_PRIV_KEY must be set in environment variables")
-# acc = Account(AccountId, PrivKey)
 
 
-def get_account():
-    near_provider = near_api.providers.JsonProvider("https://rpc.mainnet.near.org")
-    key_pair = near_api.signer.KeyPair(PrivKey)
-    signer = near_api.signer.Signer(AccountId, key_pair)
-    return near_api.account.Account(near_provider, signer, AccountId)
+def set_environment(env):
+    """Set environment for logging"""
+    global logger
+    logger = LoggerAdapter(env)
 
 
 def yocto_to_near(amount: str) -> float:
@@ -46,34 +34,11 @@ def yocto_to_near(amount: str) -> float:
     return float(Decimal(amount) / ONE_NEAR)
 
 
-def near_to_yocto(amount: float) -> str:
-    """Convert NEAR amount to yoctoNEAR string"""
-    return str(int(Decimal(str(amount)) * ONE_NEAR))
+def near_to_yocto(amount: str) -> int:
+    """Convert NEAR float (as a string) to yoctoNEAR integer"""
+    return int(Decimal(str(amount)) * ONE_NEAR)
 
 
-def format_token_amount(amount: float, decimals: int) -> str:
-    """Format token amount with proper decimals"""
-    return str(int(Decimal(str(amount)) * Decimal(str(10**decimals))))
-
-
-ASSET_MAP = {
-    "USDC": {
-        "token_id": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
-        "omft": "eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near",
-        "decimals": 6,
-    },
-    "USDT": {
-        "token_id": "nep141:usdt.tether-token.near",
-        "decimals": 6,
-    },
-    "NEAR": {
-        "token_id": "wrap.near",
-        "decimals": 24,
-    },
-}
-
-
-# TODO refactor to make use of ASSET_MAP
 def get_usdc_token_out_type(token_in):
     # usdc address may vary per token_in_id, e.g. for token_in_id:
     # "nep141:eth.omft.near", USDC tokenOut should be
@@ -139,7 +104,7 @@ async def get_usdt_quotes(token_to_quantities: TokenMap) -> list:
     return await asyncio.gather(*coroutines)
 
 
-def get_near_account_balance(account_id: str) -> float:
+def get_near_account_balance(network: str, account_id: str) -> float:
     """
     Get account balance for given NEAR account ID.
 
@@ -150,7 +115,7 @@ def get_near_account_balance(account_id: str) -> float:
         float: Account balance in yoctoNEAR
     """
     response = requests.post(
-        "https://rpc.mainnet.fastnear.com",
+        f"https://rpc.{network}.fastnear.com",
         headers={"Content-Type": "application/json"},
         json={
             "jsonrpc": "2.0",
@@ -164,6 +129,43 @@ def get_near_account_balance(account_id: str) -> float:
         },
     )
     return response.json()["result"]["amount"]
+
+
+def publish_transaction(network: str, signed_transaction: str) -> dict:
+    """
+    Submit a signed transaction to the NEAR network.
+
+    Args:
+        network: NEAR network to use (mainnet, testnet)
+        signed_transaction: Base64 encoded signed transaction
+
+    Returns:
+        dict: Transaction result containing hash and other details
+
+    Raises:
+        requests.RequestException: If the RPC request fails
+    """
+    response = requests.post(
+        f"https://rpc.{network}.fastnear.com",
+        headers={"Content-Type": "application/json"},
+        json={
+            "jsonrpc": "2.0",
+            "id": "benevio.dev",
+            "method": "send_tx",
+            "params": [signed_transaction],
+        },
+    )
+
+    if response.status_code != 200:
+        raise requests.RequestException(
+            f"Failed to submit transaction: {response.text}"
+        )
+
+    result = response.json()
+    if "error" in result:
+        raise requests.RequestException(f"Transaction failed: {result['error']}")
+
+    return result["result"]
 
 
 def fetch_usd_price(url: str, parse_price: callable) -> Union[float, bool]:
@@ -290,13 +292,76 @@ async def get_quotes(
     return quotes, best_usd_value
 
 
-def get_recommended_token_allocations(target_usd_amount: float):
+def build_deposit_and_transfer_actions(
+    token_in_address: str, amount_in: str, deposit_address: str
+) -> str:
+    """
+    Build JSON string of actions for wrapping NEAR and transferring to intents.near
+
+    Args:
+        amount_in: Amount of NEAR to wrap and transfer (in yoctoNEAR)
+        deposit_address: Destination address for the transfer
+        token_in_address: Address of the swap from token.
+
+    Returns:
+        str: JSON string containing the actions array
+    """
+    deposit_action = None
+
+    # The manner in which to execute a swap depends on the token_in and token_out types. For Near to USDC/USDT, one must call wrap.near with two actions: deposit and ft_transfer_call with the msg param of stringified JSON containing {"receiver_id": "depositAddress"}. See https://nearblocks.io/txns/AHzB4wWyvrB9bTQByRjsDexY7EqPvm3rfFxmudBZ2gFr#execution
+    if token_in_address == "wrap.near":
+        deposit_action = {
+            "type": "FunctionCall",
+            "method_name": "near_deposit",
+            "deposit": str(amount_in),
+            "gas": "50000000000000",
+            "args": {},
+        }
+    else:
+        # Handle other contract addresses, e.g. ETH, SOL
+        raise ValueError(f"Unsupported contract address: {token_in_address}")
+
+    actions = [
+        deposit_action,
+        {
+            "type": "FunctionCall",
+            "method_name": "ft_transfer_call",
+            "args": {
+                "receiver_id": "intents.near",
+                "amount": str(amount_in),
+                "msg": json.dumps({"receiver_id": deposit_address}),
+            },
+            "gas": "50000000000000",
+            "deposit": "1",
+        },
+    ]
+    return json.dumps(actions)
+
+
+def usd_to_base6(amount: float) -> str:
+    """
+    Convert USD amount to base6 string.
+
+    Args:
+        amount: Amount in USD
+
+    Returns:
+        str: Amount in base6 format
+    """
+    return str(int(amount * 100_000))
+
+
+def get_recommended_token_allocations(
+    target_usd_amount: float, tokenBalances: dict
+) -> Union[dict, None]:
+    logger.debug(f"Target USD amount: {target_usd_amount}")
+    target_usd_amount = usd_to_base6(target_usd_amount)
+    logger.debug(f"Target USD amount: {target_usd_amount}")
+
     try:
         params = {
-            "targetUsdAmount": target_usd_amount * 1000000,
-            "tokenBalances": json.dumps(
-                {"BTC": 0.08, "ETH": 0.5, "SOL": 4.2, "NEAR": 330.42928}
-            ),
+            "targetUsdAmount": target_usd_amount,
+            "tokenBalances": json.dumps(tokenBalances),
         }
 
         swap_service_url = os.environ.get("swap_allocations_worker")
@@ -337,103 +402,6 @@ class Quote(TypedDict):
     verifying_contract: str
     deadline: str
     intents: List[Intent]
-
-
-def sign_quote(quote: dict) -> Commitment:
-    print(f"Signing quote: {quote}")
-    quote_str = json.dumps(quote)
-    account = get_account()
-    signature = "ed25519:" + base58.b58encode(
-        account.signer.sign(quote_str.encode("utf-8"))
-    ).decode("utf-8")
-    public_key = "ed25519:" + base58.b58encode(account.signer.public_key).decode(
-        "utf-8"
-    )
-    print(f"Account signer public key: {public_key}")
-    try:
-        check_pub_key = ed25519.Ed25519PublicKey.from_public_bytes(
-            account.signer.public_key
-        )
-        check_pub_key.verify(
-            base58.b58decode(signature[8:]), json.dumps(quote).encode("utf-8")
-        )
-        print("Signature is valid. {signature}")
-    except ed25519.InvalidSignature:
-        print("Invalid signature.")
-
-    return Commitment(
-        standard="raw_ed25519",
-        payload=quote_str,
-        signature=signature,
-        public_key=public_key,
-    )
-
-
-def publish_intent(signed_intent):
-    print(f"Publishing intent: {json.dumps(signed_intent)}")
-    """Publishes the signed intent to the solver bus."""
-    try:
-        rpc_request = {
-            "id": "benevio.dev",
-            "jsonrpc": "2.0",
-            "method": "publish_intent",
-            "params": [signed_intent],
-        }
-        response = requests.post(
-            "https://solver-relay-v2.chaindefuser.com/rpc", json=rpc_request
-        )
-    except requests.RequestException as e:
-        print(f"Error publishing intent {e}")
-    return response.json()
-
-
-def old_demo_of_manual_swaps():
-    # Create a publish_wnear_intent.json payload for the publish_intent call
-    deadline = (datetime.now(timezone.utc) + timedelta(minutes=2)).strftime(
-        "%Y-%m-%dT%H:%M:%S.000Z"
-    )
-
-    # Get Quotes for USDT
-    # best_quote = await get_usdt_quotes({"nep141:wrap.near": 1 * ONE_NEAR})
-    best_quote = best_quote[0][1]
-    print("Best USDT Quote:", best_quote)
-
-    # Generate a random nonce
-    nonce_base64 = base64.b64encode(
-        secrets.randbits(256).to_bytes(32, byteorder="big")
-    ).decode("utf-8")
-
-    # payload = Quote(signer_id=AccountId,
-    #                nonce=nonce_base64,
-    #                verifying_contract="intents.near",
-    #                deadline=deadline,
-    #                intents=[{"intent": "token_diff",
-    #                          "diff": {best_quote.get("token_in"): "-" + str(best_quote.get("amount_in")),
-    #                                   best_quote.get("token_out"): str(best_quote.get("amount_out"))},
-    #                          "referral": "benevio-labs.near"},
-    #                       ])
-    #
-    # publish_payload = sign_quote(payload)
-
-    # client = NearMpcClient(network="mainnet")
-
-    # client.derive_mpc_key("agent.charleslavon.near")
-
-    # signed_intent = await client.sign_intent("agent.charleslavon.near", best_quote["token_in"], best_quote["token_out"], best_quote["amount_in"], best_quote["amount_out"], best_quote["quote_hash"], best_quote["expiration_time"], nonce_base64)
-    ##
-    # publish_payload = Commitment(
-    #    standard="raw_ed25519",
-    #    payload=json.dumps(signed_intent.get("intent")),
-    #    signature=signed_intent.get("signature"),
-    #    public_key=signed_intent.get("public_key")
-    # )
-
-
-#
-# publish_payload = PublishIntent(signed_data=publish_payload, quote_hashes=[
-#                                    best_quote.get("quote_hash")])
-
-# print(publish_intent(publish_payload))
 
 
 async def demo_quote():
