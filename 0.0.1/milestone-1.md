@@ -19,7 +19,7 @@
 1. Agent says: Please dig into the technical deails @ <github link to beneivo labs auth_proxy readme> and post any questions to the Peerfolio team at <telegram dev support group TBD>
 1. Alice says: Ok I'm comfortable with that. Go head and setup my trading account.
 1. Agent: displays a Connect Wallet Button, which asks Alice to sign a message.
-1. Agent UI: on the callback from the signmessage action, the Agent says: would you like to fund your trading account with 10%, 15% or 20% of the 100 Near on your account?
+1. Agent UI: on the callback from the signmessage action, the Agent says: Now let's determine the types and quantities of tokens to move into your trading account.  Peerfolio will only have access to the tokens on your trading account. All other tokens on alice.near will be untouchable. Would you like to fund your trading account with 10%, 15% or 20% of the 100 Near on your account? (Agent repeats the same quesiton for each supported token type: ETH, SOL, etc.)
 1. Alice: I'm ok with 10
 1. Agent UI: Ok understood. In a moment you will be asked to approve three transactions. The 1st asks to create the trading account as a sub account of your main account called agent.alice.near with 10 Near transfered to your trading account. The 2nd transaction asks to deploy the limited access contract to your trading account. This contract contains the logic that allows you to control where and how Peerfolio is allowed to trade on your behalf. The final transaction asks to allow Peerfolio to request signatures to approve transactions on your trading account.
 1. Agent UI begins a sequence of asking the user to approve 3 transactions.
@@ -37,4 +37,4 @@ makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public 
 
 ##### Less than Happy Path 2
 5. Alice says: Before we do anything on mainnet. I'd like to get a better understanding on how you securely trade on my behalf by first running some test trades. Can we do that?
-6. Agent says: Yes! Please visit our testnet demo @ sandbox.peerfolio.app where you can get a feel for how we approach securely trading on your behalf via a limited access trading account from the safe confines of a sandbox enfvrionment where there is no real value asscoiated to testnet tokens. Please use this testnet sandbox to setup and monitor hypothetical trading situations, and observe that we're doing a useful job before coming back here for the mainnet Peerfolio experience.
+6. Agent says: Yes! Please visit our testnet demo @ sandbox.peerfolio.app where you can get a feel for how we approach securely trading on your behalf via a limited access trading account from the safe confines of a sandbox enfvrionment where there is no real value associated to testnet tokens. Please use this testnet sandbox to setup and monitor hypothetical trading situations, and observe that we're doing a useful job before coming back here for the mainnet Peerfolio experience.
