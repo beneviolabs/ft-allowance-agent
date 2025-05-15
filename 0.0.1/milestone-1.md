@@ -35,12 +35,42 @@ makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public 
 
 
 
+##### Offboarding: Existing User wants to stop using Peerfolio.
+1. Alice: Hey I'm done using this app.
+1. Agent: Ok. Would you like to to move all the tokens from your trading account to your main account?
+1. Alice: yes
+1. Agent: You have a total of 10 Near on your trading account. If you plan to continue using Peerfolio, we need to keep a minimum of 5 Near on your trading account to keep it active. Do you plan to continue to use Peerfolio?
+1. Alice: No
+1. Agent: Just to confirm, Are you sure that you want to close your trading account with Peerfolio?
+1. Alice: Yes dammit.
+1. Agent: In a few seconds, you will be asked to review and approve a transaction to close your trading account and move all Near to alice.near.
+1. User approves the wallet transaction and then returns to Peerfolio.
+1. Agent: Hello! I'm Peerfolio, your financial assistant for managing and growing your crypto portfolio. I can help you with account details, real-time market prices of tokens, setting and tracking your financial goals, and recommending token swaps to achieve those goals. How can I assist you today?
 
-##### Less than Happy Path 1
+
+##### Offboarding: Existing User wants to defund trading account
+1. Alice: Hey, I want to move tokens out of my trading account.
+1. Agent: Ok. Would you like to to move all the tokens from your trading account to your main account?
+1. Alice: Yes or "No I only want to move 3 Near"
+1. Agent: You have a total of 10 Near on your trading account. If you plan to continue using Peerfolio, we need to keep a minimum of 5 Near on your trading account to keep it active. Do you plan to continue to use Peerfolio?
+1. Alice: Yes of course
+1. Agent: In a few seconds, you will be asked to review and approve a transaction to move X Near to alice.near.
+1. User interacts with the wallet and then returns to Peerfolio.
+
+
+##### Less than Happy Path: User declines to act due to current market state
+5. Alice says: actually my portfolio is underwater. I invested a total of $200 into a combination of Near and ETH. Both prices have since gone down, so I don't want to swap for stablecoins until my portfolio is worth more.
+6. Agent says: ....
+
+
+
+##### Less than Happy Path: User wants unsupported tokens
 5. Alice says: actually my portfolio is underwater. I invested a total of $200 into a combination of Near and ETH. Both prices have since gone down, so I don't want to swap for stablecoins until my portfolio is worth more.
 6. Agent says: Understood. If you are interested in aquiring any other tokens, please let me know what types of tokens and what quantities.
 7. Alice: I would buy more XRP or SHITZU if the prices are within a certain range.
 8. Agent: We currently only support NEAR, USDT, and USDC, but I've sent a note of your request to our product team.  If you'd like to be the frist to know when these are supported, please join our telegram channel @ <benevio labs telegram announcements channel>
+
+
 
 
 ##### Less than Happy Path 2
