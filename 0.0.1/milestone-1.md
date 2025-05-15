@@ -4,7 +4,7 @@
 <b>Overview:</b> After a brief chat with the Peerfolio Agent, Alice instructs the agent to setup a limited access account that the agent uses to trade on her behalf to realize her allowance goal of $25.00 USDT.
 
 
-##### User Journey Happy Path
+##### User Journey Happy Path - Onbaording & Goal Creation
 1. Alice opens the Peerfolio UI at peerfolio.app
 1. Agent delivers it's welcome message:  I'm Peerfolio, your financial assistant for managing and growing your crypto portfolio. I can help you with account details, real-time market prices of tokens, setting and tracking your financial goals, and recommending token swaps to achieve those goals. To get started, please tell me your near account Id.
 1. Alice shares that her info is alice.near
@@ -21,14 +21,18 @@
 1. Agent: displays a Connect Wallet Button, which asks Alice to sign a message.
 1. Agent UI: on the callback from the signmessage action, the Agent says: Now let's determine the types and quantities of tokens to move into your trading account.  Peerfolio will only have access to the tokens on your trading account. All other tokens on alice.near will be untouchable. Would you like to fund your trading account with 10%, 15% or 20% of the 100 Near on your account? (Agent repeats the same quesiton for each supported token type: ETH, SOL, etc.)
 1. Alice: I'm ok with 10
-1. Agent UI: Ok understood. In a moment you will be asked to approve two transactions. The 1st asks to create the trading account as a sub account of your main account called agent.alice.near with X Near transfered to your trading account. This trading account contains the logic that allows you to control where and how Peerfolio is allowed to trade on your behalf.  The second transaction asks to allow Peerfolio to request signatures to approve transactions on your trading account.
+1. Agent UI: Ok understood. (Agent adds this trading % into state) In a moment you will be asked to approve two transactions. The 1st asks to create the trading account as a sub account of your main account called agent.alice.near with X Near transfered to your trading account. This trading account contains the logic that allows you to control where and how Peerfolio is allowed to trade on your behalf.  The second transaction asks to allow Peerfolio to request signatures to approve transactions on your trading account.
 1. Agent UI begins a sequence of asking the user to approve 2 transactions.
-1. Agent: First, in a few seconds, you will be prompted to review and approve a transaction requesting to create your trading account at agent.alice.near with a deposit of X Near.
+1. Agent: First, in a few seconds, you will be prompted to review and approve a transaction requesting to create your trading account at agent.alice.near with a deposit of X Near (where X =  ~.02 Near required to create the account + Y Near to secure storing the proxy contract + their chosen trading %)
 1. Throughout this process the agent should maintain a state that allows us to recovery and restart from the appropriate step should any transaction fail or not be approved. To be stored in state: the hash of the contract deployed at the trading account. This way, if alice.near already has the expected limited access account but there was a failure in the deployment of the proxy contract, we could proceed directly to the proxy account deployment . Also to be stored in the state: the derived MPC public key for agent.alice.near; such that we can be aware of any failures in the 2nd transaction.
 1. After the 1st transaction is approved, in the background, Peerfolio
 makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public key which is needed in the 3rd txn.
 1. Agent: Now that your trading account has been created, in a few seconds you will be asked to review and approve a transaction to grant Peerfolio the ability to approve transactions which are limited to  agent.alice.near, and calls required to support Near, USDT, and USDC swaps on near-intents.
 1. After all transactions have completed.  The UI throws some confetti or otherwise lets the user know that they are amazing and they are ready to enjoy Peerfolio.
+1. Agent: Great, let's review your goals: we've set a swap goal to realize $15 in USDC or USDT only if the value of your Near grows by at least 5%, to at least reach $318. Would you like to make any change?
+1. Alice: No
+1. Agent: If you would like to recieve notifications on the status of your swap goals, please share your 10-digit USA-based phone number.
+
 
 
 
@@ -36,7 +40,7 @@ makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public 
 5. Alice says: actually my portfolio is underwater. I invested a total of $200 into a combination of Near and ETH. Both prices have since gone down, so I don't want to swap for stablecoins until my portfolio is worth more.
 6. Agent says: Understood. If you are interested in aquiring any other tokens, please let me know what types of tokens and what quantities.
 7. Alice: I would buy more XRP or SHITZU if the prices are within a certain range.
-8. Agent: We currently only support NEAR, USDT, and USDC, but I've sent a note of your request to our product team.  If you'd like to be the frist to know when these are supported, please join our telegram channel @ <benevio labs telegram annoucements channel>
+8. Agent: We currently only support NEAR, USDT, and USDC, but I've sent a note of your request to our product team.  If you'd like to be the frist to know when these are supported, please join our telegram channel @ <benevio labs telegram announcements channel>
 
 
 ##### Less than Happy Path 2
