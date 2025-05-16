@@ -31,17 +31,26 @@ mod models;
 mod serializer;
 mod utils;
 
-#[ext_contract(ext_self)]
-pub trait ExtSelf {
-    fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
-}
-
+// Constants
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
+pub const MIN_DEPOSIT: u128 = 500_000_000_000_000_000_000_000; // 0.5 NEAR
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
-
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
 const MAINNET_SIGNER: &str = "v1.signer";
+
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
+pub struct AuthProxyContract {
+    // Factory state
+    owner_id: AccountId,
+    min_deposit: NearToken,
+    proxy_code: Vec<u8>,
+
+    // Proxy state
+    authorized_users: UnorderedSet<AccountId>,
+    signer_contract: AccountId,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -57,16 +66,13 @@ pub enum ActionString {
     },
 }
 
-#[near(contract_state)]
-#[derive(PanicOnDefault)]
-pub struct ProxyContract {
-    owner_id: AccountId,
-    authorized_users: UnorderedSet<AccountId>,
-    signer_contract: AccountId,
+#[ext_contract(ext_self)]
+pub trait ExtSelf {
+    fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
 }
 
 #[near]
-impl ProxyContract {
+impl AuthProxyContract {
     #[init]
     pub fn new(owner_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");
@@ -82,9 +88,76 @@ impl ProxyContract {
 
         Self {
             owner_id,
+            min_deposit: NearToken::from_yoctonear(MIN_DEPOSIT), // 0.5 NEAR
+            proxy_code: Vec::new(),
             authorized_users: UnorderedSet::new(b"a"),
             signer_contract: signer_contract.parse().unwrap(),
         }
+    }
+
+    // Factory methods
+    #[private]
+    pub fn update_proxy_code(&mut self, code: Vec<u8>) {
+        self.assert_owner();
+        self.proxy_code = code;
+    }
+
+    #[payable]
+    pub fn create_proxy(&mut self, sub_account_id: AccountId) -> Promise {
+        let deposit = env::attached_deposit();
+        assert!(
+            deposit >= self.min_deposit,
+            "Not enough deposit, minimum is {} NEAR",
+            self.min_deposit.as_near()
+        );
+
+        Promise::new(sub_account_id.clone())
+            .create_account()
+            .transfer(deposit)
+            .deploy_contract(self.proxy_code.clone())
+            .function_call(
+                "new".to_string(),
+                serde_json::json!({
+                    "owner_id": env::predecessor_account_id()
+                })
+                .to_string()
+                .into_bytes(),
+                NearToken::from_near(0),
+                Gas::from_tgas(30),
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::from_tgas(10))
+                    .on_proxy_created(sub_account_id),
+            )
+    }
+
+    #[private]
+    pub fn on_proxy_created(
+        &mut self,
+        #[callback_result] create_result: Result<(), PromiseError>,
+        sub_account_id: AccountId,
+    ) -> bool {
+        if create_result.is_err() {
+            env::log_str(&format!("Failed to create proxy for {}", sub_account_id));
+            return false;
+        }
+        env::log_str(&format!(
+            "Successfully created proxy for {}",
+            sub_account_id
+        ));
+        true
+    }
+
+    // Owner methods for managing authorized users
+    pub fn add_authorized_user(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.authorized_users.insert(&account_id);
+    }
+
+    pub fn remove_authorized_user(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.authorized_users.remove(&account_id);
     }
 
     pub fn set_signer_contract(&mut self, new_signer: AccountId) {
@@ -92,103 +165,42 @@ impl ProxyContract {
         self.signer_contract = new_signer;
     }
 
+    // View methods
+    pub fn get_min_deposit(&self) -> NearToken {
+        self.min_deposit
+    }
+
     pub fn get_signer_contract(&self) -> AccountId {
         self.signer_contract.clone()
+    }
+
+    pub fn is_authorized(&self, account_id: AccountId) -> bool {
+        self.authorized_users.contains(&account_id) || self.owner_id == account_id
+    }
+
+    pub fn get_authorized_users(&self) -> Vec<AccountId> {
+        self.authorized_users.to_vec()
     }
 
     pub fn get_owner_id(&self) -> AccountId {
         self.owner_id.clone()
     }
 
-    #[payable]
-    // TODO - test this when ed25519 signatuers are live and add a callback fn specifically for this
-    pub fn request_sign_message(
-        &mut self,
-        contract_id: AccountId,
-        method_name: Option<String>,
-        args: String,
-        gas: U64,
-        deposit: NearToken,
-        nonce: U64,
-        block_hash: Base58CryptoHash,
-        account_pk_for_mpc: String,
-    ) -> Promise {
-        let attached_gas = env::prepaid_gas();
-        assert!(
-            attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
-            "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
-            GAS_FOR_REQUEST_SIGNATURE.as_tgas(),
-            attached_gas.as_tgas()
+    // Helper methods
+    fn assert_owner(&self) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "You have no power here. Only the owner can perform this action."
         );
-
-        assert!(
-            self.authorized_users
-                .contains(&env::predecessor_account_id()),
-            "Unauthorized: only authorized users can request signatures"
-        );
-
-        // Calculate remaining gas after base costs
-        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
-        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
-
-        near_sdk::env::log_str(&format!(
-            "Request received - Contract: {}, Method: {:?}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
-            contract_id,
-            method_name,
-            args,
-            gas.0,
-            deposit.as_yoctonear(),
-            nonce.0,
-            block_hash
-        ));
-
-        let action = NearAction {
-            method_name: method_name.clone(),
-            contract_id: contract_id.clone(),
-            gas_attached: NearGas::from_gas(gas.0),
-            deposit_attached: deposit,
-        };
-
-        // verify the action is permitted
-        NearAction::is_allowed(&action);
-
-        // Store original args for callback verification
-        let original_args = args.clone();
-        near_sdk::env::log_str(&format!("Original args: {}", original_args));
-
-        // Extract just the function call args as the payload
-        let args_bytes = args.into_bytes();
-        let hashed_payload = utils::hash_payload(&args_bytes);
-
-        near_sdk::env::log_str(&format!(
-            "Signing just args payload - Hash: {:?}",
-            bs58::encode(&hashed_payload).into_string()
-        ));
-
-        let request = SignRequest {
-            payload: args_bytes, // Send raw args instead of transaction hash
-            path: account_pk_for_mpc,
-            key_version: 0,
-        };
-
-        let request_payload = serde_json::json!({
-            "request": request,
-        });
-
-        Promise::new(self.signer_contract.clone())
-            .function_call(
-                "sign".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
-                env::attached_deposit(),
-                gas_for_signing,
-            )
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(CALLBACK_GAS)
-                    .sign_request_callback(original_args),
-            )
     }
 
+    pub fn set_min_deposit(&mut self, amount: NearToken) {
+        self.assert_owner();
+        self.min_deposit = amount;
+    }
+
+    // Request a signature from the MPC signer
     #[payable]
     pub fn request_signature(
         &mut self,
@@ -470,34 +482,5 @@ impl ProxyContract {
                 false
             }
         }
-    }
-
-    // Owner methods for managing authorized users
-    pub fn add_authorized_user(&mut self, account_id: AccountId) {
-        self.assert_owner();
-        self.authorized_users.insert(&account_id);
-    }
-
-    pub fn remove_authorized_user(&mut self, account_id: AccountId) {
-        self.assert_owner();
-        self.authorized_users.remove(&account_id);
-    }
-
-    pub fn get_authorized_users(&self) -> Vec<AccountId> {
-        self.authorized_users.to_vec()
-    }
-
-    // View methods
-    pub fn is_authorized(&self, account_id: AccountId) -> bool {
-        self.authorized_users.contains(&account_id) || self.owner_id == account_id
-    }
-
-    // Helper methods
-    fn assert_owner(&self) {
-        assert_eq!(
-            env::predecessor_account_id(),
-            self.owner_id,
-            "Be gone. You have no power here."
-        );
     }
 }
