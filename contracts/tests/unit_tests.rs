@@ -3,8 +3,8 @@ mod tests {
 
     use near_sdk::{
         json_types::{Base58CryptoHash, U64},
-        test_utils::{accounts, get_logs, VMContextBuilder},
-        testing_env, AccountId, Gas, NearToken,
+        test_utils::{accounts, VMContextBuilder},
+        testing_env, AccountId,
     };
     use proxy_contract::ProxyContract;
 
@@ -160,39 +160,5 @@ mod tests {
             "secp256k1:abcd".to_string(),      // public_key
             "ed25519:wxyz".to_string(),        // path
         );
-    }
-
-    fn test_large_number_serialization() {
-        let actions_json = r#"[{
-            "type": "Transfer",
-            "deposit": "1000000000000000000000000"
-        }]"#;
-
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
-
-        let mut contract = ProxyContract::new(accounts(1));
-        contract.add_authorized_user(accounts(2));
-
-        testing_env!(get_context(accounts(2))
-            .attached_deposit(NearToken::from_near(1))
-            .prepaid_gas(Gas::from_tgas(1000))
-            .predecessor_account_id(accounts(2))
-            .build());
-
-        contract.request_signature(
-            accounts(2),
-            actions_json.to_string(),
-            U64(1),
-            "11111111111111111111111111111111".try_into().unwrap(),
-            "secp256k1:ZMPyNgKaUjsKzzQrJ2h2rMT8myKfSrGNNnBsuhA4uNFHpHy7bMq4BPuMzcbGy22hgmSK9cw8PfLqamwzHi7eGW4".to_string(),
-            "ed25519:13mBWvPqTHeWCaBy5Roik3MhNLtbiFSJdPbJTUzDGR9h".to_string(),
-        );
-
-        // Check logs for properly formatted JSON
-        let logs = get_logs();
-        assert!(logs
-            .iter()
-            .any(|log| log.contains("\"2000000000000000000000000\"")));
     }
 }
