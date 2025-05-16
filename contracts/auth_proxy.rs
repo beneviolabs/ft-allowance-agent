@@ -33,6 +33,7 @@ mod utils;
 
 // Constants
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
+pub const MIN_DEPOSIT: u128 = 500_000_000_000_000_000_000_000; // 0.5 NEAR
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
@@ -40,8 +41,13 @@ const MAINNET_SIGNER: &str = "v1.signer";
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
-pub struct ProxyContract {
+pub struct AuthProxyContract {
+    // Factory state
     owner_id: AccountId,
+    min_deposit: NearToken,
+    proxy_code: Vec<u8>,
+
+    // Proxy state
     authorized_users: UnorderedSet<AccountId>,
     signer_contract: AccountId,
 }
@@ -66,7 +72,7 @@ pub trait ExtSelf {
 }
 
 #[near]
-impl ProxyContract {
+impl AuthProxyContract {
     #[init]
     pub fn new(owner_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");
@@ -82,9 +88,76 @@ impl ProxyContract {
 
         Self {
             owner_id,
+            min_deposit: NearToken::from_yoctonear(MIN_DEPOSIT), // 0.5 NEAR
+            proxy_code: Vec::new(),
             authorized_users: UnorderedSet::new(b"a"),
             signer_contract: signer_contract.parse().unwrap(),
         }
+    }
+
+    // Factory methods
+    #[private]
+    pub fn update_proxy_code(&mut self, code: Vec<u8>) {
+        self.assert_owner();
+        self.proxy_code = code;
+    }
+
+    #[payable]
+    pub fn create_proxy(&mut self, sub_account_id: AccountId) -> Promise {
+        let deposit = env::attached_deposit();
+        assert!(
+            deposit >= self.min_deposit,
+            "Not enough deposit, minimum is {} NEAR",
+            self.min_deposit.as_near()
+        );
+
+        Promise::new(sub_account_id.clone())
+            .create_account()
+            .transfer(deposit)
+            .deploy_contract(self.proxy_code.clone())
+            .function_call(
+                "new".to_string(),
+                serde_json::json!({
+                    "owner_id": env::predecessor_account_id()
+                })
+                .to_string()
+                .into_bytes(),
+                NearToken::from_near(0),
+                Gas::from_tgas(30),
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::from_tgas(10))
+                    .on_proxy_created(sub_account_id),
+            )
+    }
+
+    #[private]
+    pub fn on_proxy_created(
+        &mut self,
+        #[callback_result] create_result: Result<(), PromiseError>,
+        sub_account_id: AccountId,
+    ) -> bool {
+        if create_result.is_err() {
+            env::log_str(&format!("Failed to create proxy for {}", sub_account_id));
+            return false;
+        }
+        env::log_str(&format!(
+            "Successfully created proxy for {}",
+            sub_account_id
+        ));
+        true
+    }
+
+    // Owner methods for managing authorized users
+    pub fn add_authorized_user(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.authorized_users.insert(&account_id);
+    }
+
+    pub fn remove_authorized_user(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.authorized_users.remove(&account_id);
     }
 
     pub fn set_signer_contract(&mut self, new_signer: AccountId) {
@@ -92,14 +165,42 @@ impl ProxyContract {
         self.signer_contract = new_signer;
     }
 
+    // View methods
+    pub fn get_min_deposit(&self) -> NearToken {
+        self.min_deposit
+    }
+
     pub fn get_signer_contract(&self) -> AccountId {
         self.signer_contract.clone()
+    }
+
+    pub fn is_authorized(&self, account_id: AccountId) -> bool {
+        self.authorized_users.contains(&account_id) || self.owner_id == account_id
+    }
+
+    pub fn get_authorized_users(&self) -> Vec<AccountId> {
+        self.authorized_users.to_vec()
     }
 
     pub fn get_owner_id(&self) -> AccountId {
         self.owner_id.clone()
     }
 
+    // Helper methods
+    fn assert_owner(&self) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "You have no power here. Only the owner can perform this action."
+        );
+    }
+
+    pub fn set_min_deposit(&mut self, amount: NearToken) {
+        self.assert_owner();
+        self.min_deposit = amount;
+    }
+
+    // Request a signature from the MPC signer
     #[payable]
     pub fn request_signature(
         &mut self,
@@ -381,34 +482,5 @@ impl ProxyContract {
                 false
             }
         }
-    }
-
-    // Owner methods for managing authorized users
-    pub fn add_authorized_user(&mut self, account_id: AccountId) {
-        self.assert_owner();
-        self.authorized_users.insert(&account_id);
-    }
-
-    pub fn remove_authorized_user(&mut self, account_id: AccountId) {
-        self.assert_owner();
-        self.authorized_users.remove(&account_id);
-    }
-
-    pub fn get_authorized_users(&self) -> Vec<AccountId> {
-        self.authorized_users.to_vec()
-    }
-
-    // View methods
-    pub fn is_authorized(&self, account_id: AccountId) -> bool {
-        self.authorized_users.contains(&account_id) || self.owner_id == account_id
-    }
-
-    // Helper methods
-    fn assert_owner(&self) {
-        assert_eq!(
-            env::predecessor_account_id(),
-            self.owner_id,
-            "Be gone. You have no power here."
-        );
     }
 }
