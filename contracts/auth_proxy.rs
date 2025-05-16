@@ -31,17 +31,20 @@ mod models;
 mod serializer;
 mod utils;
 
-#[ext_contract(ext_self)]
-pub trait ExtSelf {
-    fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
-}
-
+// Constants
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
-
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
 const MAINNET_SIGNER: &str = "v1.signer";
+
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
+pub struct ProxyContract {
+    owner_id: AccountId,
+    authorized_users: UnorderedSet<AccountId>,
+    signer_contract: AccountId,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -57,12 +60,9 @@ pub enum ActionString {
     },
 }
 
-#[near(contract_state)]
-#[derive(PanicOnDefault)]
-pub struct ProxyContract {
-    owner_id: AccountId,
-    authorized_users: UnorderedSet<AccountId>,
-    signer_contract: AccountId,
+#[ext_contract(ext_self)]
+pub trait ExtSelf {
+    fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
 }
 
 #[near]
