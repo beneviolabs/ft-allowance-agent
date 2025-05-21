@@ -4,7 +4,7 @@
 <b>Overview:</b> After a brief chat with the Peerfolio Agent, Alice instructs the agent to setup a limited access account that the agent uses to trade on her behalf to realize her allowance goal of $25.00 USDT.
 
 
-##### User Journey Happy Path - Onbaording & Goal Creation
+##### User Journey Happy Path - Onboarding & Goal Creation
 1. Alice opens the Peerfolio UI at peerfolio.app
 1. Agent delivers it's welcome message:  I'm Peerfolio, your financial assistant for managing and growing your crypto portfolio. I can help you with account details, real-time market prices of tokens, setting and tracking your financial goals, and recommending token swaps to achieve those goals. To get started, please tell me your near account Id.
 1. Alice shares that her info is alice.near
