@@ -2,9 +2,10 @@
 mod tests {
 
     use near_sdk::{
+        AccountId, NearToken,
         json_types::{Base58CryptoHash, U64},
-        test_utils::{accounts, VMContextBuilder},
-        testing_env, AccountId, NearToken,
+        test_utils::{VMContextBuilder, accounts},
+        testing_env,
     };
     use proxy_contract::AuthProxyContract;
     use proxy_contract::MIN_DEPOSIT;

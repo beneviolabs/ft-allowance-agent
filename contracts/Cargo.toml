@@ -1,23 +1,19 @@
 [package]
 name = "proxy-contract"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.81.0"
+edition = "2024"
+rust-version = "1.85.0"
 
-[build]
-rustflags = ["-Z", "unstable-options"]
-
-[unstable]
-build-std = ["panic_abort", "std"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 name = "proxy_contract"
 path = "auth_proxy.rs"
 
+
 [dependencies]
-near-sdk = {version = "5.5.0", features = ["unit-testing", "unstable"] }
-near-contract-standards = "5.5.0"
+near-sdk = {version = "5.14.0", features = ["unit-testing", "unstable", "legacy"] }
+near-contract-standards = "5.14.0"
 near-gas = "0.3.0"
 borsh = "1.5.1"
 borsh-derive = "1.5.1"
@@ -28,11 +24,19 @@ serde_json = "1.0"
 hex = "0.4.3"
 schemars = "0.8.22"
 bs58 = "0.4.0"
-ed25519-dalek = "1.0.1"
+near-account-id = "=1.0.0"
 
 
 [dev-dependencies]
-near-workspaces = "0.16.0"
+near-workspaces = "0.20.1"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"
 anyhow = "1.0"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

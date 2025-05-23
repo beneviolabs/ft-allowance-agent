@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# Check if NEAR CLI is installed
-if ! command -v near &> /dev/null; then
-    echo "NEAR CLI is not installed. Please install it first with: npm install -g near-cli"
-    exit 1
-fi
-
 # Check required tools
 check_requirements() {
     # Check if NEAR CLI is installed
@@ -55,12 +49,12 @@ else
 fi
 # Build the contract
 echo "Building contract..."
-cd ../ && RUSTFLAGS="-Z unstable-options" cargo +nightly near build --no-docker --no-abi
+RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
 
 # Set variables
-WASM_PATH="target/near/proxy_contract.wasm"
-FACTORY_ACCOUNT="proxy-v1.benevio-labs.$NETWORK"
-FACTORY_OWNER="benevio-labs.$NETWORK"
+WASM_PATH="factory/target/near/proxy_factory.wasm"
+FACTORY_ACCOUNT="v0.hateful-argument.$NETWORK"
+FACTORY_OWNER="hateful-argument.$NETWORK"
 
 echo "Optimizing WASM..."
 wasm-opt -Oz -o "$WASM_PATH.optimized" "$WASM_PATH"
@@ -82,16 +76,8 @@ if [ ! -f "$WASM_PATH" ]; then
     exit 1
 fi
 
-# Before making the near call, log the exact input
-debug_chunk() {
-    local chunk="$1"
-    echo "Chunk length: ${#chunk}"
-    echo "First 100 chars of chunk: ${chunk:0:100}"
-    echo "JSON to be sent:"
-    echo "{\"code\": \"$chunk\"}" | jq '.'
-}
 
-# Deploy factory if needed
+# Deploy factory
 if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
     echo "Deploying factory contract..."
     near create-account \
@@ -104,46 +90,6 @@ if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
     "$WASM_PATH" \
     --initFunction "new" \
     --initArgs '{"owner_id":"'"$FACTORY_OWNER"'"}'
-else
-
-    # Update proxy code using chunked base64 input
-    echo "Updating proxy code..."
-    ENCODED_WASM=$(base64 < "$WASM_PATH")
-    CHUNK_SIZE=100000
-    total_size=$(echo -n "$ENCODED_WASM" | wc -c)
-    processed_size=0
-
-    # Split base64 encoded WASM into chunks and process each chunk
-    update_success=true
-    echo "$ENCODED_WASM" | fold -w $CHUNK_SIZE | while read -r chunk; do
-        debug_chunk "$chunk"
-        # Prepare the command but don't execute yet
-        command="near call \"$FACTORY_ACCOUNT\" \
-            update_proxy_code \
-            "$chunk" --base64  \
-            --accountId \"$FACTORY_OWNER\" \
-            --gas 300000000000000"
-
-        # Show the command that will be executed
-        echo "About to execute:"
-        echo "$command"
-
-        # Wait for user confirmation
-        read -p "Press enter to execute this command (or Ctrl+C to abort)..."
-
-        # Execute the command
-        if ! eval "$command"; then
-            update_success=false
-            break
-        fi
-    done
-
-    # Check if update was successful
-    if [ "$update_success" = false ]; then
-        echo "Failed to update proxy code"
-        exit 1
-    fi
-    echo "Successfully uploaded proxy code in chunks"
 fi
 
 
@@ -179,6 +125,7 @@ if [ "$WASM_CHECKSUM" != "$DEPLOYED_HASH" ]; then
 else
     echo "✅ Checksum match confirmed"
 fi
+
 
 # Check deployment status
 if [ $? -eq 0 ]; then
