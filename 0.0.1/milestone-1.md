@@ -45,6 +45,7 @@ makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public 
 1. Alice: Yes dammit.
 1. Agent: In a few seconds, you will be asked to review and approve a transaction to close your trading account and move all Near to alice.near.
 1. User approves the wallet transaction and then returns to Peerfolio.
+1. Agent: Your trading account has been closed. Confirmation receipt @ <explorer link>
 1. Agent: Hello! I'm Peerfolio, your financial assistant for managing and growing your crypto portfolio. I can help you with account details, real-time market prices of tokens, setting and tracking your financial goals, and recommending token swaps to achieve those goals. How can I assist you today?
 
 
@@ -56,11 +57,12 @@ makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public 
 1. Alice: Yes of course
 1. Agent: In a few seconds, you will be asked to review and approve a transaction to move X Near to alice.near.
 1. User interacts with the wallet and then returns to Peerfolio.
+1. Agent: ✅ I’ve moved your tokens back to your main account. You can view the transaction here if you’d like. Let me know if you want to create a new goal or check your portfolio details.
 
 
 ##### Less than Happy Path: User declines to act due to current market state
 5. Alice says: actually my portfolio is underwater. I invested a total of $200 into a combination of Near and ETH. Both prices have since gone down, so I don't want to swap for stablecoins until my portfolio is worth more.
-6. Agent says: ....
+6. Agent says: Totally understood — I won’t suggest any swaps for now. Would you like me to ping you when your portfolio crosses back above $200? I can send a message via Telegram or email — just let me know.
 
 
 
@@ -80,4 +82,9 @@ makes a view call ala contracts/scripts/derive_mpc_key.sh to get the MPC public 
 ##### Less than Happy Path 3
 8. Agent says: Unfortunately, we can only create a goal for a future swap if your portfolio has at least $10 worth of assets. We can revist creating a swap goal as soon as you have more assets available to trade.  Would you like to explore aquiring any other tokens?
 
+
+
+# Create proxy instance
+echo "Creating proxy instance..."
+near contract call-function as-transaction proxy-v1.benevio-labs.testnet create_proxy json-args '{"owner_id":"charleslavon.testnet"}' prepaid-gas '300.0 Tgas' attached-deposit '4.8 NEAR' sign-as proxy-v1.benevio-labs.testnet network-config testnet sign-with-keychain send
 
