@@ -1,4 +1,4 @@
-use near_sdk::{near, AccountId, Gas, NearToken};
+use near_sdk::{AccountId, Gas, NearToken, near};
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone)]
