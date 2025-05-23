@@ -1,11 +1,14 @@
 use std::str::FromStr;
 
 use actions::NearAction;
+use borsh::{BorshDeserialize, BorshSerialize};
 use ed25519_dalek::{PublicKey as PublicKey2, Signature as Ed25519Signature2, Verifier};
 use hex::FromHex;
 use near_gas::NearGas;
 use near_sdk::base64;
 use near_sdk::collections::UnorderedSet;
+use near_sdk::store::LazyOption;
+
 use near_sdk::ext_contract;
 use near_sdk::json_types::{Base58CryptoHash, U64};
 use near_sdk::serde::{Deserialize, Serialize};
@@ -36,6 +39,7 @@ const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 pub const MIN_DEPOSIT: u128 = 500_000_000_000_000_000_000_000; // 0.5 NEAR
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
+const NEAR_PER_STORAGE: NearToken = NearToken::from_yoctonear(10u128.pow(19)); // 10e19yⓃ
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
 const MAINNET_SIGNER: &str = "v1.signer";
 
@@ -45,7 +49,10 @@ pub struct AuthProxyContract {
     // Factory state
     owner_id: AccountId,
     min_deposit: NearToken,
-    proxy_code: Vec<u8>,
+    // Since a contract is something big to store, we use LazyOptions
+    // this way it is not deserialized on each method call
+    proxy_code: LazyOption<Vec<u8>>,
+    // https://github.com/near-examples/factory-rust/blob/main/src/lib.rs#L19
 
     // Proxy state
     authorized_users: UnorderedSet<AccountId>,
@@ -71,6 +78,26 @@ pub trait ExtSelf {
     fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
 }
 
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+struct ProxyInitArgs {
+    owner_id: AccountId,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone)]
+pub struct ProxyCodeChunks {
+    chunks: Vec<Vec<u8>>,
+    total_size: usize,
+}
+
+impl ProxyCodeChunks {
+    fn try_to_vec(&self) -> Result<Vec<u8>, std::io::Error> {
+        let mut buf = Vec::new();
+        BorshSerialize::serialize(self, &mut buf)?;
+        Ok(buf)
+    }
+}
+
 #[near]
 impl AuthProxyContract {
     #[init]
@@ -89,46 +116,84 @@ impl AuthProxyContract {
         Self {
             owner_id,
             min_deposit: NearToken::from_yoctonear(MIN_DEPOSIT), // 0.5 NEAR
-            proxy_code: Vec::new(),
+            proxy_code: LazyOption::new(b"p", None),             // Initialize without value
             authorized_users: UnorderedSet::new(b"a"),
             signer_contract: signer_contract.parse().unwrap(),
         }
     }
 
-    // Factory methods
-    #[private]
-    pub fn update_proxy_code(&mut self, code: Vec<u8>) {
+    pub fn clear_proxy_code(&mut self) {
         self.assert_owner();
-        self.proxy_code = code;
+        self.proxy_code.set(None);
     }
 
     #[payable]
-    pub fn create_proxy(&mut self, sub_account_id: AccountId) -> Promise {
-        let deposit = env::attached_deposit();
+    pub fn create_proxy(&mut self, owner_id: AccountId) -> Promise {
+        // Append sub_account_id to current contract's id
+        let trimmed_owner = owner_id.as_str().split('.').next().unwrap();
+        let full_sub_account: AccountId =
+            format!("{}.{}", trimmed_owner, env::current_account_id())
+                .parse()
+                .unwrap();
+
+        // Log the account creation attempt
+        near_sdk::env::log_str(&format!(
+            "Creating limited access account at {}",
+            full_sub_account
+        ));
+
+        // Assert the sub-account is valid
         assert!(
-            deposit >= self.min_deposit,
-            "Not enough deposit, minimum is {} NEAR",
-            self.min_deposit.as_near()
+            env::is_valid_account_id(full_sub_account.as_bytes()),
+            "Invalid subaccount"
         );
 
-        Promise::new(sub_account_id.clone())
+        // Assert enough tokens are attached to create the account and deploy the contract
+        let attached = env::attached_deposit();
+        let code = self.proxy_code.clone().unwrap();
+        let contract_bytes = code.len() as u128;
+        let contract_storage_cost = NEAR_PER_STORAGE.saturating_mul(contract_bytes);
+        // Require a little more since storage cost is not exact
+        let minimum_needed = contract_storage_cost.saturating_add(NearToken::from_millinear(100));
+        assert!(
+            attached >= minimum_needed,
+            "Attach at least {minimum_needed} yⓃ"
+        );
+
+        let total_gas = Gas::from_tgas(300);
+        assert!(
+            env::prepaid_gas() >= total_gas,
+            "Not enough gas attached. Please attach {} TGas",
+            total_gas.as_tgas()
+        );
+
+        near_sdk::env::log_str(&format!(
+            "Creating proxy with total gas: {} TGas",
+            total_gas.as_tgas()
+        ));
+
+        // Verify we have valid WASM code
+        let code = self
+            .proxy_code
+            .get()
+            .clone()
+            .expect("Auth Proxy code has not been uploaded");
+
+        let init_args = near_sdk::serde_json::to_vec(&ProxyInitArgs { owner_id }).unwrap();
+        Promise::new(full_sub_account.clone())
             .create_account()
-            .transfer(deposit)
-            .deploy_contract(self.proxy_code.clone())
+            .transfer(env::attached_deposit())
+            .deploy_contract(code)
             .function_call(
                 "new".to_string(),
-                serde_json::json!({
-                    "owner_id": env::predecessor_account_id()
-                })
-                .to_string()
-                .into_bytes(),
+                init_args,
                 NearToken::from_near(0),
-                Gas::from_tgas(30),
+                Gas::from_tgas(50),
             )
             .then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(Gas::from_tgas(10))
-                    .on_proxy_created(sub_account_id),
+                    .with_static_gas(Gas::from_tgas(20))
+                    .on_proxy_created(full_sub_account),
             )
     }
 
@@ -186,6 +251,24 @@ impl AuthProxyContract {
         self.owner_id.clone()
     }
 
+    pub fn get_proxy_code_size(&self) -> usize {
+        self.proxy_code
+            .get()
+            .as_ref()
+            .map(|code| code.len())
+            .unwrap_or(0)
+    }
+
+    pub fn get_proxy_code_hash(&self) -> String {
+        match self.proxy_code.get() {
+            Some(code) => {
+                let hash = env::sha256(&code);
+                hex::encode(hash)
+            }
+            None => String::from("No proxy code uploaded"),
+        }
+    }
+
     // Helper methods
     fn assert_owner(&self) {
         assert_eq!(
@@ -193,6 +276,46 @@ impl AuthProxyContract {
             self.owner_id,
             "You have no power here. Only the owner can perform this action."
         );
+    }
+
+    pub fn update_proxy_code(&mut self) {
+        self.assert_owner();
+
+        let code = env::input().expect("Error: No input").to_vec();
+
+        near_sdk::env::log_str(&format!("Received code chunk of size: {}", code.len()));
+        near_sdk::env::log_str(&format!(
+            "First few bytes: {:?}",
+            &code[..std::cmp::min(10, code.len())]
+        ));
+
+        // Get the current chunks or create new
+        let mut chunks = match env::storage_read(b"proxy_code_chunks") {
+            Some(data) => ProxyCodeChunks::try_from_slice(&data).unwrap(),
+            None => ProxyCodeChunks {
+                chunks: Vec::new(),
+                total_size: 0,
+            },
+        };
+
+        // Get the length before moving code
+        let code_len = code.len();
+        // Add new chunk
+        chunks.chunks.push(code);
+        chunks.total_size += code_len;
+
+        // Store updated chunks
+        env::storage_write(b"proxy_code_chunks", &chunks.try_to_vec().unwrap());
+
+        // If this is the last chunk, combine and set the proxy code
+        if chunks.total_size >= 394_000 {
+            // Adjust size based on your WASM
+            let complete_code: Vec<u8> = chunks.chunks.into_iter().flatten().collect();
+            self.proxy_code.set(Some(complete_code));
+
+            // Clear chunks storage
+            env::storage_remove(b"proxy_code_chunks");
+        }
     }
 
     pub fn set_min_deposit(&mut self, amount: NearToken) {
@@ -439,20 +562,6 @@ impl AuthProxyContract {
         base64_tx
     }
 
-    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
-        let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
-
-        env::log_str(&format!("Hash: {}", hex::encode(&hash)));
-        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
-        env::log_str(&format!("V: {}", v));
-
-        recovered.map(|key: [u8; 64]| {
-            let hex_key: String = hex::encode(&key);
-            env::log_str(&format!("Recovered key: {}", hex_key));
-            hex_key
-        })
-    }
-
     pub fn verify_ed25519_signature(
         &self,
         message: Vec<u8>,
@@ -482,5 +591,19 @@ impl AuthProxyContract {
                 false
             }
         }
+    }
+
+    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
+        let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
+
+        env::log_str(&format!("Hash: {}", hex::encode(&hash)));
+        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
+        env::log_str(&format!("V: {}", v));
+
+        recovered.map(|key: [u8; 64]| {
+            let hex_key: String = hex::encode(&key);
+            env::log_str(&format!("Recovered key: {}", hex_key));
+            hex_key
+        })
     }
 }

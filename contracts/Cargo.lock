@@ -2244,9 +2244,9 @@ dependencies = [
 
 [[package]]
 name = "omni-transaction"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "811f0307f9e19b45396114ac337aa6024f38b3f66aef0cd230fe4ee5c828db33"
+checksum = "6298bb213fe2f82b6066d4b729dc77d730c4b272a07a275b2f0eeb6225627d37"
 dependencies = [
  "borsh",
  "bs58 0.5.1",
@@ -2478,6 +2478,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "borsh",
+ "borsh-derive",
  "bs58 0.4.0",
  "ed25519-dalek 1.0.1",
  "hex",

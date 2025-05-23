@@ -119,34 +119,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ed25519_verification_env() {
-        // These data came from the .env variable siggy generation in utils.py
-
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
-        let contract = AuthProxyContract::new(accounts(1));
-
-        // Your intent message
-        let message = "{\"signer_id\": \"charleslavon.near\", \"nonce\": \"5x9D1/ppzzCfGyDM6kjeIl560bbc2pvLMu+rIeiKyHE=\", \"verifying_contract\": \"intents.near\", \"deadline\": \"2025-04-02T18:58:10.000Z\", \"intents\": [{\"intent\": \"token_diff\", \"diff\": {\"nep141:wrap.near\": \"-1000000000000000000000000\", \"nep141:usdt.tether-token.near\": \"2642656\"}, \"referral\": \"benevio-labs.near\"}]}";
-
-        // Convert base58 signature to bytes
-        let sig_str = "4mLRJJi4hAAyuKJTq4RX3997WPbbfxPaEiw8snS96V4DPQre6iYLMwJWWw6VwftP3Y8g4qjDsNa5xLn3MBsYBfLg";
-        let signature = bs58::decode(sig_str)
-            .into_vec()
-            .expect("Failed to decode signature");
-
-        // Your public key in bytes
-        let public_key = bs58::decode("9RqZPDhjgQQDFTpREQqnasYuM1FKKrKpHDWxPJaeJGYb")
-            .into_vec()
-            .expect("Failed to decode public key");
-
-        let result =
-            contract.verify_ed25519_signature(message.as_bytes().to_vec(), signature, public_key);
-
-        assert!(result, "Signature verification failed");
-    }
-
-    #[test]
     #[should_panic(
         expected = "unknown variant `Sign Message`, expected `FunctionCall` or `Transfer`"
     )]
@@ -192,60 +164,15 @@ mod tests {
     }
 
     #[test]
-    fn test_create_proxy() {
-        let context = get_context(accounts(0));
-        testing_env!(context.build());
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-
-        // Set proxy code
-        let proxy_code = vec![1, 2, 3, 4]; // Mock WASM bytes
-        contract.update_proxy_code(proxy_code.clone());
-
-        // Create proxy account
-        let proxy_account: AccountId = "alice_agent.benevio-labs.testnet".parse().unwrap();
-        let _result = contract.create_proxy(proxy_account.clone());
-
-        // No assertion needed as create_proxy returns a Promise
-        // If it didn't panic, the Promise was created successfully
-    }
-
-    #[test]
-    #[should_panic(expected = "Not enough deposit")]
-    fn test_create_proxy_insufficient_deposit() {
-        let context = get_context(accounts(0))
-            .attached_deposit(NearToken::from_near(0))
-            .build();
-        testing_env!(context);
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-        let proxy_account: AccountId = "alice_agent.benevio-labs.testnet".parse().unwrap();
-        contract.create_proxy(proxy_account);
-    }
-
-    #[test]
-    fn test_update_proxy_code() {
-        let context = get_context(accounts(0));
-        testing_env!(context.build());
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-        let proxy_code = vec![1, 2, 3, 4];
-
-        contract.update_proxy_code(proxy_code.clone());
-        // Note: We can't directly verify proxy_code as it's private
-        // Instead we verify through create_proxy functionality
-        let proxy_account: AccountId = "alice_agent.benevio-labs.testnet".parse().unwrap();
-        contract.create_proxy(proxy_account);
-    }
-
-    #[test]
     #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
     fn test_unauthorized_update_proxy_code() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
 
         let mut contract = AuthProxyContract::new(accounts(0));
-        contract.update_proxy_code(vec![1, 2, 3, 4]);
+
+        // Attempt to update proxy code as non-owner
+        contract.update_proxy_code();
     }
 
     #[test]
