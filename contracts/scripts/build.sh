@@ -4,4 +4,4 @@ echo "Running cargo formatter "
 cargo fmt
 
 
-env RUSTFLAGS='-Ctarget-cpu=mvp' cargo +nightly build -Zbuild-std=panic_abort,std --target=wasm32-unknown-unknown --release
+env RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
