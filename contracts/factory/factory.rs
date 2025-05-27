@@ -43,6 +43,7 @@ impl ProxyFactory {
             "Attach at least {minimum_needed} yⓃ"
         );
 
+        // This is one transaction with multiple action receipts. The entire transaction will be "rolled-back" if an action fails, like https://testnet.nearblocks.io/txns/2oQzUR7RV4v69t7VZaLP8AiZBrh3rdULVMQx8bury9A6
         Promise::new(full_sub_account.clone())
             .create_account()
             .transfer(env::attached_deposit())
