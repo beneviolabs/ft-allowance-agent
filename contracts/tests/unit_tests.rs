@@ -2,15 +2,20 @@
 mod tests {
 
     use near_sdk::{
+        AccountId, NearToken,
         json_types::{Base58CryptoHash, U64},
-        test_utils::{accounts, get_logs, VMContextBuilder},
-        testing_env, AccountId, Gas, NearToken,
+        test_utils::{VMContextBuilder, accounts},
+        testing_env,
     };
-    use proxy_contract::ProxyContract;
+    use proxy_contract::AuthProxyContract;
+    use proxy_contract::MIN_DEPOSIT;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(predecessor);
+        builder
+            .predecessor_account_id(predecessor)
+            .attached_deposit(NearToken::from_yoctonear(MIN_DEPOSIT))
+            .prepaid_gas(near_sdk::Gas::from_tgas(150));
         builder
     }
 
@@ -18,7 +23,7 @@ mod tests {
     fn test_new() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = ProxyContract::new(accounts(1));
+        let contract = AuthProxyContract::new(accounts(1));
         assert_eq!(contract.get_owner_id(), accounts(1));
     }
 
@@ -26,7 +31,7 @@ mod tests {
     fn test_authorize_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
 
         contract.add_authorized_user(accounts(2));
         assert!(contract.is_authorized(accounts(2)));
@@ -36,7 +41,7 @@ mod tests {
     fn test_remove_authorized_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
 
         contract.add_authorized_user(accounts(2));
         assert!(contract.is_authorized(accounts(2)));
@@ -46,19 +51,29 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Be gone. You have no power here.")]
+    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
     fn test_unauthorized_add_user() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
         contract.add_authorized_user(accounts(3));
+    }
+
+    #[test]
+    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
+    fn test_unauthorized_min_deposit_update() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+
+        let mut contract = AuthProxyContract::new(accounts(0));
+        contract.set_min_deposit(NearToken::from_near(10));
     }
 
     #[test]
     fn test_get_authorized_users() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
 
         contract.add_authorized_user(accounts(2));
         contract.add_authorized_user(accounts(3));
@@ -73,18 +88,18 @@ mod tests {
     fn test_set_signer_contract() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
 
         contract.set_signer_contract(accounts(2));
         assert_eq!(contract.get_signer_contract(), accounts(2));
     }
 
     #[test]
-    #[should_panic(expected = "Be gone. You have no power here.")]
+    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
     fn test_unauthorized_set_signer() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
         contract.set_signer_contract(accounts(3));
     }
 
@@ -93,7 +108,7 @@ mod tests {
     fn test_unauthorized_request_signature() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
         contract.request_signature(
             accounts(3),                                        // contract_id: AccountId
             "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // actions_json: String
@@ -105,41 +120,13 @@ mod tests {
     }
 
     #[test]
-    fn test_ed25519_verification_env() {
-        // These data came from the .env variable siggy generation in utils.py
-
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
-        let contract = ProxyContract::new(accounts(1));
-
-        // Your intent message
-        let message = "{\"signer_id\": \"charleslavon.near\", \"nonce\": \"5x9D1/ppzzCfGyDM6kjeIl560bbc2pvLMu+rIeiKyHE=\", \"verifying_contract\": \"intents.near\", \"deadline\": \"2025-04-02T18:58:10.000Z\", \"intents\": [{\"intent\": \"token_diff\", \"diff\": {\"nep141:wrap.near\": \"-1000000000000000000000000\", \"nep141:usdt.tether-token.near\": \"2642656\"}, \"referral\": \"benevio-labs.near\"}]}";
-
-        // Convert base58 signature to bytes
-        let sig_str = "4mLRJJi4hAAyuKJTq4RX3997WPbbfxPaEiw8snS96V4DPQre6iYLMwJWWw6VwftP3Y8g4qjDsNa5xLn3MBsYBfLg";
-        let signature = bs58::decode(sig_str)
-            .into_vec()
-            .expect("Failed to decode signature");
-
-        // Your public key in bytes
-        let public_key = bs58::decode("9RqZPDhjgQQDFTpREQqnasYuM1FKKrKpHDWxPJaeJGYb")
-            .into_vec()
-            .expect("Failed to decode public key");
-
-        let result =
-            contract.verify_ed25519_signature(message.as_bytes().to_vec(), signature, public_key);
-
-        assert!(result, "Signature verification failed");
-    }
-
-    #[test]
     #[should_panic(
         expected = "unknown variant `Sign Message`, expected `FunctionCall` or `Transfer`"
     )]
     fn test_disallowed_action() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = ProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(accounts(1));
 
         testing_env!(get_context(accounts(1)).build());
         contract.add_authorized_user(accounts(2));
@@ -162,37 +149,59 @@ mod tests {
         );
     }
 
-    fn test_large_number_serialization() {
-        let actions_json = r#"[{
-            "type": "Transfer",
-            "deposit": "1000000000000000000000000"
-        }]"#;
+    #[test]
+    fn test_factory_initialization() {
+        let context = get_context(accounts(0));
+        testing_env!(context.build());
 
+        let contract = AuthProxyContract::new(accounts(0));
+
+        assert_eq!(contract.get_owner_id(), accounts(0));
+        assert_eq!(
+            contract.get_min_deposit(),
+            NearToken::from_yoctonear(MIN_DEPOSIT)
+        );
+        assert!(contract.get_authorized_users().is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
+    fn test_unauthorized_update_proxy_code() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
 
-        let mut contract = ProxyContract::new(accounts(1));
-        contract.add_authorized_user(accounts(2));
+        let mut contract = AuthProxyContract::new(accounts(0));
 
-        testing_env!(get_context(accounts(2))
-            .attached_deposit(NearToken::from_near(1))
-            .prepaid_gas(Gas::from_tgas(1000))
-            .predecessor_account_id(accounts(2))
-            .build());
+        // Attempt to update proxy code as non-owner
+        contract.update_proxy_code();
+    }
 
-        contract.request_signature(
-            accounts(2),
-            actions_json.to_string(),
-            U64(1),
-            "11111111111111111111111111111111".try_into().unwrap(),
-            "secp256k1:ZMPyNgKaUjsKzzQrJ2h2rMT8myKfSrGNNnBsuhA4uNFHpHy7bMq4BPuMzcbGy22hgmSK9cw8PfLqamwzHi7eGW4".to_string(),
-            "ed25519:13mBWvPqTHeWCaBy5Roik3MhNLtbiFSJdPbJTUzDGR9h".to_string(),
-        );
+    #[test]
+    fn test_proxy_creation_callback() {
+        let context = get_context(accounts(0));
+        testing_env!(context.build());
 
-        // Check logs for properly formatted JSON
-        let logs = get_logs();
-        assert!(logs
-            .iter()
-            .any(|log| log.contains("\"2000000000000000000000000\"")));
+        let mut contract = AuthProxyContract::new(accounts(0));
+        let proxy_account: AccountId = "alice_agent.benevio-labs.testnet".parse().unwrap();
+
+        // Test successful callback
+        let success = contract.on_proxy_created(Ok(()), proxy_account.clone());
+        assert!(success);
+
+        // Test failed callback
+        let failure = contract.on_proxy_created(Err(near_sdk::PromiseError::Failed), proxy_account);
+        assert!(!failure);
+    }
+
+    #[test]
+    fn test_min_deposit_management() {
+        let context = get_context(accounts(0));
+        testing_env!(context.build());
+
+        let mut contract = AuthProxyContract::new(accounts(0));
+        let new_min_deposit = NearToken::from_near(10);
+
+        contract.set_min_deposit(new_min_deposit);
+        assert_eq!(contract.get_min_deposit(), new_min_deposit);
     }
 }

@@ -2,11 +2,10 @@
 mod integration_tests {
 
     use anyhow::Result;
-    use near_workspaces::{operations::Function, Account, Contract, DevNetwork, Worker};
+    use near_workspaces::{Account, Contract, DevNetwork, Worker, operations::Function};
     use serde_json::json;
 
-    const WASM_FILEPATH: &[u8] =
-        include_bytes!("../target/wasm32-unknown-unknown/release/proxy_contract.wasm");
+    const WASM_FILEPATH: &[u8] = include_bytes!("../target/near/proxy_contract.wasm");
 
     async fn init(worker: &Worker<impl DevNetwork>) -> Result<(Contract, Account)> {
         let proxy_contract = worker.dev_deploy(WASM_FILEPATH).await?;

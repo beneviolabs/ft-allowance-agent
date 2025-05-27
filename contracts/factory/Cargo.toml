@@ -1,0 +1,22 @@
+[package]
+name = "proxy-factory"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "proxy_factory"
+path = "factory.rs"
+
+[dependencies]
+near-sdk = { version = "5.14.0", features = ["unstable"] }
+hex = "0.4.3"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

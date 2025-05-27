@@ -1,26 +1,26 @@
 use std::str::FromStr;
 
 use actions::NearAction;
-use ed25519_dalek::{PublicKey as PublicKey2, Signature as Ed25519Signature2, Verifier};
 use hex::FromHex;
 use near_gas::NearGas;
 use near_sdk::base64;
 use near_sdk::collections::UnorderedSet;
+
 use near_sdk::ext_contract;
 use near_sdk::json_types::{Base58CryptoHash, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    bs58, env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, bs58, env, near,
 };
 use omni_transaction::TransactionBuilder;
 use omni_transaction::TxBuilder;
 use omni_transaction::{
+    NEAR,
     near::types::{
         Action as OmniAction, BlockHash as OmniBlockHash,
         FunctionCallAction as OmniFunctionCallAction, Secp256K1Signature, Signature,
-        U128 as OmniU128, U64 as OmniU64,
+        U64 as OmniU64, U128 as OmniU128,
     },
-    NEAR,
 };
 
 pub use crate::models::*;
@@ -31,17 +31,21 @@ mod models;
 mod serializer;
 mod utils;
 
-#[ext_contract(ext_self)]
-pub trait ExtSelf {
-    fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
-}
-
+// Constants
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
 const MAINNET_SIGNER: &str = "v1.signer";
+
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
+pub struct AuthProxyContract {
+    owner_id: AccountId,
+    authorized_users: UnorderedSet<AccountId>,
+    signer_contract: AccountId,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -57,16 +61,13 @@ pub enum ActionString {
     },
 }
 
-#[near(contract_state)]
-#[derive(PanicOnDefault)]
-pub struct ProxyContract {
-    owner_id: AccountId,
-    authorized_users: UnorderedSet<AccountId>,
-    signer_contract: AccountId,
+#[ext_contract(ext_self)]
+pub trait ExtSelf {
+    fn callback_method(&mut self, #[callback_result] call_result: Result<Vec<u8>, PromiseError>);
 }
 
 #[near]
-impl ProxyContract {
+impl AuthProxyContract {
     #[init]
     pub fn new(owner_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");
@@ -87,6 +88,17 @@ impl ProxyContract {
         }
     }
 
+    // Owner methods for managing authorized users
+    pub fn add_authorized_user(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.authorized_users.insert(&account_id);
+    }
+
+    pub fn remove_authorized_user(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.authorized_users.remove(&account_id);
+    }
+
     pub fn set_signer_contract(&mut self, new_signer: AccountId) {
         self.assert_owner();
         self.signer_contract = new_signer;
@@ -96,99 +108,28 @@ impl ProxyContract {
         self.signer_contract.clone()
     }
 
+    pub fn is_authorized(&self, account_id: AccountId) -> bool {
+        self.authorized_users.contains(&account_id) || self.owner_id == account_id
+    }
+
+    pub fn get_authorized_users(&self) -> Vec<AccountId> {
+        self.authorized_users.to_vec()
+    }
+
     pub fn get_owner_id(&self) -> AccountId {
         self.owner_id.clone()
     }
 
-    #[payable]
-    // TODO - test this when ed25519 signatuers are live and add a callback fn specifically for this
-    pub fn request_sign_message(
-        &mut self,
-        contract_id: AccountId,
-        method_name: Option<String>,
-        args: String,
-        gas: U64,
-        deposit: NearToken,
-        nonce: U64,
-        block_hash: Base58CryptoHash,
-        account_pk_for_mpc: String,
-    ) -> Promise {
-        let attached_gas = env::prepaid_gas();
-        assert!(
-            attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
-            "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
-            GAS_FOR_REQUEST_SIGNATURE.as_tgas(),
-            attached_gas.as_tgas()
+    // Helper methods
+    fn assert_owner(&self) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "You have no power here. Only the owner can perform this action."
         );
-
-        assert!(
-            self.authorized_users
-                .contains(&env::predecessor_account_id()),
-            "Unauthorized: only authorized users can request signatures"
-        );
-
-        // Calculate remaining gas after base costs
-        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
-        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
-
-        near_sdk::env::log_str(&format!(
-            "Request received - Contract: {}, Method: {:?}, Args: {}, Gas: {}, Deposit: {}, Nonce: {}, Block Hash: {:?}",
-            contract_id,
-            method_name,
-            args,
-            gas.0,
-            deposit.as_yoctonear(),
-            nonce.0,
-            block_hash
-        ));
-
-        let action = NearAction {
-            method_name: method_name.clone(),
-            contract_id: contract_id.clone(),
-            gas_attached: NearGas::from_gas(gas.0),
-            deposit_attached: deposit,
-        };
-
-        // verify the action is permitted
-        NearAction::is_allowed(&action);
-
-        // Store original args for callback verification
-        let original_args = args.clone();
-        near_sdk::env::log_str(&format!("Original args: {}", original_args));
-
-        // Extract just the function call args as the payload
-        let args_bytes = args.into_bytes();
-        let hashed_payload = utils::hash_payload(&args_bytes);
-
-        near_sdk::env::log_str(&format!(
-            "Signing just args payload - Hash: {:?}",
-            bs58::encode(&hashed_payload).into_string()
-        ));
-
-        let request = SignRequest {
-            payload: args_bytes, // Send raw args instead of transaction hash
-            path: account_pk_for_mpc,
-            key_version: 0,
-        };
-
-        let request_payload = serde_json::json!({
-            "request": request,
-        });
-
-        Promise::new(self.signer_contract.clone())
-            .function_call(
-                "sign".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
-                env::attached_deposit(),
-                gas_for_signing,
-            )
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(CALLBACK_GAS)
-                    .sign_request_callback(original_args),
-            )
     }
 
+    // Request a signature from the MPC signer
     #[payable]
     pub fn request_signature(
         &mut self,
@@ -317,12 +258,6 @@ impl ProxyContract {
             block_hash
         ));
 
-        // helpful references
-        // https://github.com/PiVortex/subscription-example/blob/main/contract/src/charge_subscription.rs#L129
-        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/transactions/src/sign.ts#L39
-        //https://github.com/near/near-api-js/blob/master/packages/transactions/src/signature.ts#L21
-        //https://github.com/near/near-api-js/blob/a33274d9c06fec7de756f4490dea0618b2fc75da/packages/providers/src/json-rpc-provider.ts#L112C32-L112C49
-
         // SHA-256 hash of the serialized transaction
         let hashed_payload = utils::hash_payload(&tx.build_for_signing());
 
@@ -355,6 +290,11 @@ impl ProxyContract {
                     .with_static_gas(CALLBACK_GAS)
                     .sign_request_callback(tx_json_string),
             )
+    }
+
+    pub fn add_full_access_key(&mut self, public_key: PublicKey) {
+        self.assert_owner();
+        Promise::new(env::current_account_id()).add_full_access_key(public_key);
     }
 
     #[private] // Only callable by the contract itself
@@ -425,79 +365,5 @@ impl ProxyContract {
         near_sdk::env::log_str(&format!("Signed transaction (base64): {}", base64_tx));
 
         base64_tx
-    }
-
-    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
-        let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
-
-        env::log_str(&format!("Hash: {}", hex::encode(&hash)));
-        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
-        env::log_str(&format!("V: {}", v));
-
-        recovered.map(|key: [u8; 64]| {
-            let hex_key: String = hex::encode(&key);
-            env::log_str(&format!("Recovered key: {}", hex_key));
-            hex_key
-        })
-    }
-
-    pub fn verify_ed25519_signature(
-        &self,
-        message: Vec<u8>,
-        signature: Vec<u8>,
-        public_key: Vec<u8>,
-    ) -> bool {
-        env::log_str(&format!("Message: {}", hex::encode(&message)));
-        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
-        env::log_str(&format!("Public Key: {}", hex::encode(&public_key)));
-
-        match (
-            Ed25519Signature2::from_bytes(signature.as_slice().try_into().unwrap()),
-            PublicKey2::from_bytes(public_key.as_slice().try_into().unwrap()),
-        ) {
-            (Ok(sig), Ok(pk)) => match pk.verify(&message, &sig) {
-                Ok(_) => {
-                    env::log_str("Signature verification succeeded");
-                    true
-                }
-                Err(e) => {
-                    env::log_str(&format!("Verification failed: {:?}", e));
-                    false
-                }
-            },
-            _ => {
-                env::log_str("Failed to parse signature or public key");
-                false
-            }
-        }
-    }
-
-    // Owner methods for managing authorized users
-    pub fn add_authorized_user(&mut self, account_id: AccountId) {
-        self.assert_owner();
-        self.authorized_users.insert(&account_id);
-    }
-
-    pub fn remove_authorized_user(&mut self, account_id: AccountId) {
-        self.assert_owner();
-        self.authorized_users.remove(&account_id);
-    }
-
-    pub fn get_authorized_users(&self) -> Vec<AccountId> {
-        self.authorized_users.to_vec()
-    }
-
-    // View methods
-    pub fn is_authorized(&self, account_id: AccountId) -> bool {
-        self.authorized_users.contains(&account_id) || self.owner_id == account_id
-    }
-
-    // Helper methods
-    fn assert_owner(&self) {
-        assert_eq!(
-            env::predecessor_account_id(),
-            self.owner_id,
-            "Be gone. You have no power here."
-        );
     }
 }

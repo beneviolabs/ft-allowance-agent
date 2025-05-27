@@ -1,22 +1,22 @@
 use near_sdk::{
-    borsh::{self, BorshDeserialize, BorshSerialize},
     AccountId,
+    borsh::{self, BorshDeserialize, BorshSerialize},
 };
 use omni_transaction::near::types::{Action, BlockHash, PublicKey, Signature, U64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct BigR {
     pub affine_point: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct ScalarValue {
     pub scalar: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct SignatureResponse {
     pub big_r: BigR,
     pub s: ScalarValue,

@@ -1,12 +1,31 @@
 #### This repo contain the two products
 
-1. [A proxy account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) to be deployed onto a user's sub-account ([with supporting scripts](https://github.com/beneviolabs/ft-allowance-agent/tree/main/contracts/scripts)), allowing one to transfer tokens to their sub-account and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your sub-account.
+1. [The limited access trading account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) manages authorized users for signature requests, allows one to transfer tokens to their trading and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your trading account. The system consists of two main contracts:
+    1. Factory Contract (factory.rs):
+
+    - Acts as a proxy contract deployer
+    - Stores proxy code hash for verification
+    - [Creates proxy instances](https://testnet.nearblocks.io/txns/8Q8mPTCUxaJnTubwE6ZTHF1ZLvxo9BhVfBBifsuriXAD) with proper initialization
+    - Ensures secure deployment with minimum deposit requirements
+    Example usage: `near call auth-factory.benevio-labs.testnet create_proxy \
+  '{"owner_id": "alice.testnet"}' \
+  --accountId benevio-labs.testnet \
+  --deposit 5`
+
+    2. Auth Proxy Contract (auth_proxy.rs):
+
+    - Manages authorized users for signature requests
+    - Handles MPC signature generation for approved transactions
+    - Restricts contract interactions to predefined set (wrap.near, intents.near)
+    - Supports specific methods (near_deposit, add_public_key, etc.)
+    Example usage: `near call alice.auth-factory.benevio-labs.testnet request_signature \
+  '{...signature_args...}' \
+  --accountId authorized-agent.testnet`
 
 2. A WIP [Token Allowance Agent ](https://github.com/beneviolabs/ft-allowance-agent/blob/main/0.0.1/agent.py)that capitalizes on market volatility to grow your wealth, by determining which tokens to periodically swap into stablecoins to secure gains without reducing your portfolio below some minimum USD value. Realize these gains for yourself, or setup a conditional recurring allowance for your crypto curious friends & family.
 
 
-#### A Proxy Account to allow an agent autonomous, yet restricted use of select assets
-This repo introduces auth_proxy.rs to be deployed onto a user's sub-account (with scripts supporting deployment and teseting), allowing one to transfer tokens to their sub account and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your sub-account.
+#### TODO - Replace the examples and scripts with details on how to onboard via the langchain agent.
 
 #### Examples
 1. [This testnet txn](https://testnet.nearblocks.io/txns/Hi2pfe89tBdMN2oY2dFXLuHcSBVFotx6pHViDQuKUZDi) converting 1 Near to WNear by `agent.charleslavon.testnet` was initiated by `benevio-labs.testnet` who was pre-approved by auth_proxy.rs to use Near's MPC contract to [create a signature](https://testnet.nearblocks.io/txns/831u2KqbdtzvJti5HUhGnp4tZD7Q8onUzD11rwBjrAAm).
