@@ -1,5 +1,5 @@
 use near_sdk::serde::Serialize;
-use near_sdk::{env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise};
+use near_sdk::{AccountId, Gas, NearToken, PanicOnDefault, Promise, env, near};
 
 const NEAR_PER_STORAGE: NearToken = NearToken::from_yoctonear(10u128.pow(19));
 const PROXY_CODE: &[u8] = include_bytes!("../target/near/proxy_contract.wasm");
@@ -20,12 +20,14 @@ impl ProxyFactory {
         }
     }
 
+    //TODO update - this should return the deposit if the txn fails
     #[payable]
     pub fn deposit_and_create_proxy(&mut self, owner_id: AccountId) -> Promise {
         let deposit = env::attached_deposit();
         assert!(
-            deposit >= NearToken::from_near(4),
-            "Must attach at least 4 NEAR"
+            //TODO update this to use NEP-591 to reduce the required near. https://github.com/near/NEPs/pull/591/files
+            deposit >= NearToken::from_yoctonear(3_800_000_000_000_000_000_000_000),
+            "Must attach at least 3.8 NEAR"
         );
         self.create_proxy(owner_id)
     }
