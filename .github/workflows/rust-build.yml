@@ -33,5 +33,7 @@ jobs:
       - name: Build Rust code
         run: |
           rustup component add rust-src
-          chmod +x scripts/build.sh
-          ./scripts/build.sh
+          chmod +x build_auth_proxy.sh
+          ./build_auth_proxy.sh
+          cd factory && cargo install --locked cargo-near
+          RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi

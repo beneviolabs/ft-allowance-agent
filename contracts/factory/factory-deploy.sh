@@ -52,7 +52,7 @@ echo "Building contract..."
 RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
 
 # Set variables
-WASM_PATH="factory/target/near/proxy_factory.wasm"
+WASM_PATH="target/near/proxy_factory.wasm"
 FACTORY_ACCOUNT="v0.hateful-argument.$NETWORK"
 FACTORY_OWNER="hateful-argument.$NETWORK"
 
@@ -78,18 +78,17 @@ fi
 
 
 # Deploy factory
-if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
     echo "Deploying factory contract..."
-    near create-account \
-        "$FACTORY_ACCOUNT" \
-        --masterAccount "$FACTORY_OWNER" \
-        --initialBalance "6"
-
+if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
     near deploy \
     "$FACTORY_ACCOUNT" \
     "$WASM_PATH" \
     --initFunction "new" \
     --initArgs '{"owner_id":"'"$FACTORY_OWNER"'"}'
+ else
+    near deploy \
+    "$FACTORY_ACCOUNT" \
+    "$WASM_PATH"
 fi
 
 

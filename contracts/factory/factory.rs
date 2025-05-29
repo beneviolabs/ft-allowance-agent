@@ -1,5 +1,5 @@
 use near_sdk::serde::Serialize;
-use near_sdk::{AccountId, Gas, NearToken, PanicOnDefault, Promise, env, near};
+use near_sdk::{env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise};
 
 const NEAR_PER_STORAGE: NearToken = NearToken::from_yoctonear(10u128.pow(19));
 const PROXY_CODE: &[u8] = include_bytes!("../target/near/proxy_contract.wasm");
@@ -13,14 +13,26 @@ pub struct ProxyFactory {
 #[near]
 impl ProxyFactory {
     #[init]
-    pub fn new(owner_id: AccountId) -> Self {
+    pub fn new() -> Self {
         assert!(!env::state_exists(), "Already initialized");
-        Self { owner_id }
+        Self {
+            owner_id: env::predecessor_account_id(), // TODO perhaps this can be removed completely since sub accounts can only be created by the factory owner
+        }
+    }
+
+    #[payable]
+    pub fn deposit_and_create_proxy(&mut self, owner_id: AccountId) -> Promise {
+        let deposit = env::attached_deposit();
+        assert!(
+            //TODO update this to use NEP-591 to reduce the required near. https://github.com/near/NEPs/pull/591/files
+            deposit >= NearToken::from_yoctonear(3_800_000_000_000_000_000_000_000),
+            "Must attach at least 3.8 NEAR"
+        );
+        self.create_proxy(owner_id)
     }
 
     #[payable]
     pub fn create_proxy(&mut self, owner_id: AccountId) -> Promise {
-        self.assert_owner();
         assert!(
             env::attached_deposit() >= NEAR_PER_STORAGE,
             "Attach at least 1 yⓃ"
@@ -54,14 +66,6 @@ impl ProxyFactory {
                 NearToken::from_near(0),
                 Gas::from_tgas(50),
             )
-    }
-
-    fn assert_owner(&self) {
-        assert_eq!(
-            env::predecessor_account_id(),
-            self.owner_id,
-            "You have no power here. Only the owner can perform this action."
-        );
     }
 
     // View methods
