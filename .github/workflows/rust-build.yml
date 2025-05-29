@@ -35,4 +35,5 @@ jobs:
           rustup component add rust-src
           chmod +x build_auth_proxy.sh
           ./build_auth_proxy.sh
-          cd factory && RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
+          cd factory && cargo install --locked cargo-near
+          RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
