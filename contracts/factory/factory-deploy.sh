@@ -53,8 +53,8 @@ RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm 
 
 # Set variables
 WASM_PATH="target/near/proxy_factory.wasm"
-FACTORY_ACCOUNT="v0.hateful-argument.$NETWORK"
-FACTORY_OWNER="hateful-argument.$NETWORK"
+FACTORY_ACCOUNT="auth-v0.peerfolio.$NETWORK"
+FACTORY_OWNER="peerfolio.$NETWORK"
 
 echo "Optimizing WASM..."
 wasm-opt -Oz -o "$WASM_PATH.optimized" "$WASM_PATH"
@@ -80,11 +80,16 @@ fi
 # Deploy factory
     echo "Deploying factory contract..."
 if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
+    near create-account "$FACTORY_ACCOUNT" --masterAccount "$FACTORY_OWNER" --initialBalance 5
+
+    echo "Waiting 2 seconds for block finality before deploying..."
+    sleep 2
+
     near deploy \
     "$FACTORY_ACCOUNT" \
     "$WASM_PATH" \
     --initFunction "new" \
-    --initArgs '{"owner_id":"'"$FACTORY_OWNER"'"}'
+    --initArgs '{"network":"'"$NEAR_ENV"'"}'
  else
     near deploy \
     "$FACTORY_ACCOUNT" \
