@@ -3,9 +3,8 @@ mod tests {
 
     use crate::ProxyFactory;
     use near_sdk::{
-        AccountId, Gas, NearToken, Promise,
-        test_utils::{VMContextBuilder, accounts},
-        testing_env,
+        test_utils::{accounts, VMContextBuilder},
+        testing_env, AccountId, Gas, NearToken, Promise,
     };
 
     const MIN_DEPOSIT: u128 = 3_800_000_000_000_000_000_000_000; // 3.8 NEAR

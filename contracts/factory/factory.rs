@@ -1,5 +1,5 @@
 use near_sdk::serde::Serialize;
-use near_sdk::{AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, env, near};
+use near_sdk::{env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError};
 
 const NEAR_PER_STORAGE: NearToken = NearToken::from_yoctonear(10u128.pow(19));
 const PROXY_CODE: &[u8] = include_bytes!("../target/near/proxy_contract.wasm");

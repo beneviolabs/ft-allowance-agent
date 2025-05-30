@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e  # Exit on any error
 
 # Colors for output
 GREEN='\033[0;32m'
