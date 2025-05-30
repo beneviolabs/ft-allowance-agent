@@ -2,6 +2,7 @@
 mod contract_tests {
 
     use anyhow::Result;
+    use near_sdk::AccountId;
     use near_workspaces::{Account, Contract, DevNetwork, Worker, operations::Function};
     use serde_json::json;
 
@@ -15,7 +16,8 @@ mod contract_tests {
         let _result = proxy_contract
             .call("new")
             .args_json(json!({
-                "owner_id": owner.id()
+                "owner_id": owner.id(),
+                "signer_id": AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap()
             }))
             .transact()
             .await?;
@@ -24,7 +26,7 @@ mod contract_tests {
     }
 
     #[tokio::test]
-    async fn mainnet_proxy_contract_initialization() -> Result<()> {
+    async fn proxy_contract_initialization() -> Result<()> {
         let worker = near_workspaces::sandbox().await?;
         let (contract, owner) = init(&worker).await?;
 
@@ -34,19 +36,11 @@ mod contract_tests {
             .await?
             .json::<String>()?;
 
-        assert!(
-            contract_owner.ends_with(".near"),
-            "This test expects a mainnet-like owner ID"
+        assert_eq!(
+            contract_owner,
+            owner.id().to_string(),
+            "Contract owner should match"
         );
-
-        // Test getting the signer contract
-        let signer = contract
-            .call("get_signer_contract")
-            .view()
-            .await?
-            .json::<String>()?;
-
-        assert_eq!(signer, "v1.signer");
 
         // Test owner authorization
         let result = contract
@@ -59,60 +53,6 @@ mod contract_tests {
             .json::<bool>()?;
 
         assert!(result, "Owner should be authorized");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn testnet_proxy_contract_initialization() -> Result<()> {
-        let worker = near_workspaces::sandbox().await?;
-        let proxy_contract = worker.dev_deploy(WASM_FILEPATH).await?;
-
-        // Initialize with specific owner
-        let owner_id = "bruce_leroy.testnet";
-        let _result = proxy_contract
-            .call("new")
-            .args_json(json!({
-                "owner_id": owner_id
-            }))
-            .transact()
-            .await?;
-
-        // Test getting the owner
-        let contract_owner = proxy_contract
-            .call("get_owner_id")
-            .view()
-            .await?
-            .json::<String>()?;
-
-        assert!(
-            contract_owner.ends_with(".testnet"),
-            "This test expects a testnet-like owner ID"
-        );
-
-        // Test getting the signer contract
-        let signer = proxy_contract
-            .call("get_signer_contract")
-            .view()
-            .await?
-            .json::<String>()?;
-
-        assert_eq!(
-            signer, "v1.signer-prod.testnet",
-            "Incorrect signer contract"
-        );
-
-        // Test owner authorization
-        let is_authorized = proxy_contract
-            .call("is_authorized")
-            .args_json(json!({
-                "account_id": owner_id
-            }))
-            .view()
-            .await?
-            .json::<bool>()?;
-
-        assert!(is_authorized, "Owner should be authorized");
 
         Ok(())
     }
@@ -222,36 +162,6 @@ mod contract_tests {
             err_msg.contains("Unauthorized: only authorized users can request signatures"),
             "Expected 'Unauthorized:...' error, got: {}",
             err_msg
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_set_signer_contract() -> Result<()> {
-        let worker = near_workspaces::sandbox().await?;
-        let (contract, _owner) = init(&worker).await?;
-
-        let new_signer = "new-signer.near".to_string();
-
-        // Set new signer contract
-        let _ = contract
-            .call("set_signer_contract")
-            .args_json(json!({
-                "new_signer": new_signer
-            }))
-            .transact()
-            .await?;
-
-        // Verify new signer contract
-        let current_signer = contract
-            .call("get_signer_contract")
-            .view()
-            .await?
-            .json::<String>()?;
-
-        assert_eq!(
-            current_signer, new_signer,
-            "Signer contract should be updated"
         );
         Ok(())
     }

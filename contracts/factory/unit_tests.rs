@@ -25,8 +25,11 @@ mod tests {
         let context = get_context(accounts(1), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new();
-        assert_eq!(contract.get_owner_id(), accounts(1));
+        let contract = ProxyFactory::new("testnet".to_string());
+        assert_eq!(
+            contract.get_signer_contract(),
+            "v1.signer-prod.testnet".parse::<AccountId>().unwrap()
+        );
     }
 
     #[test]
@@ -35,7 +38,7 @@ mod tests {
         let context = get_context(accounts(1), Some(NearToken::from_near(1)));
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new();
+        let mut contract = ProxyFactory::new("testnet".to_string());
         contract.deposit_and_create_proxy(accounts(2));
     }
 
@@ -44,7 +47,7 @@ mod tests {
         let context = get_context(accounts(1), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new();
+        let contract = ProxyFactory::new("mainnet".to_string());
 
         // Test testnet address
         let owner_id: AccountId = "alice.testnet".parse().unwrap();
@@ -62,7 +65,7 @@ mod tests {
         let context = get_context(accounts(1), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new();
+        let contract = ProxyFactory::new("mainnet".to_string());
         let hash = contract.get_proxy_code_hash();
 
         assert!(!hash.is_empty(), "Code hash should not be empty");
@@ -74,7 +77,7 @@ mod tests {
         let context = get_context(accounts(1), Some(NearToken::from_near(4)));
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new();
+        let mut contract = ProxyFactory::new("testnet".to_string());
         let result = contract.create_proxy(accounts(2));
 
         // Since we can't fully test Promise chain in unit tests,
@@ -87,7 +90,7 @@ mod tests {
         let context = get_context(accounts(1), None);
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new();
+        let mut contract = ProxyFactory::new("testnet".to_string());
         let result = contract.on_proxy_created(
             accounts(1),
             Err(near_sdk::PromiseError::Failed),

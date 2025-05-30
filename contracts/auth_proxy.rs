@@ -12,6 +12,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, bs58, env, near,
 };
+
 use omni_transaction::TransactionBuilder;
 use omni_transaction::TxBuilder;
 use omni_transaction::{
@@ -38,15 +39,12 @@ const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 
-const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
-const MAINNET_SIGNER: &str = "v1.signer";
-
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct AuthProxyContract {
     owner_id: AccountId,
     authorized_users: UnorderedSet<AccountId>,
-    signer_contract: AccountId,
+    signer_id: AccountId,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,22 +69,13 @@ pub trait ExtSelf {
 #[near]
 impl AuthProxyContract {
     #[init]
-    pub fn new(owner_id: AccountId) -> Self {
+    pub fn new(owner_id: AccountId, signer_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");
-
-        // Determine signer contract based on current network
-        let binding = env::current_account_id();
-        let current_network = binding.as_str().split('.').last().unwrap_or("testnet");
-
-        let signer_contract = match current_network {
-            "near" => MAINNET_SIGNER,
-            _ => TESTNET_SIGNER,
-        };
 
         Self {
             owner_id,
             authorized_users: UnorderedSet::new(b"a"),
-            signer_contract: signer_contract.parse().unwrap(),
+            signer_id,
         }
     }
 
@@ -99,15 +88,6 @@ impl AuthProxyContract {
     pub fn remove_authorized_user(&mut self, account_id: AccountId) {
         self.assert_owner();
         self.authorized_users.remove(&account_id);
-    }
-
-    pub fn set_signer_contract(&mut self, new_signer: AccountId) {
-        self.assert_owner();
-        self.signer_contract = new_signer;
-    }
-
-    pub fn get_signer_contract(&self) -> AccountId {
-        self.signer_contract.clone()
     }
 
     pub fn is_authorized(&self, account_id: AccountId) -> bool {
@@ -280,7 +260,7 @@ impl AuthProxyContract {
         let request_payload = serde_json::json!({ "request": request });
 
         // Call MPC requesting a signature for the above txn
-        Promise::new(self.signer_contract.clone())
+        Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
                 near_sdk::serde_json::to_vec(&request_payload).unwrap(),

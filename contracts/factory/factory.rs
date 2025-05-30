@@ -3,23 +3,31 @@ use near_sdk::{AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError,
 
 const NEAR_PER_STORAGE: NearToken = NearToken::from_yoctonear(10u128.pow(19));
 const PROXY_CODE: &[u8] = include_bytes!("../target/near/proxy_contract.wasm");
+const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
+const MAINNET_SIGNER: &str = "v1.signer";
 
 mod unit_tests;
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct ProxyFactory {
-    owner_id: AccountId,
+    signer_contract: AccountId,
 }
 
 #[near]
 impl ProxyFactory {
     #[init]
-    pub fn new() -> Self {
+    pub fn new(network: String) -> Self {
         assert!(!env::state_exists(), "Already initialized");
-        Self {
-            owner_id: env::predecessor_account_id(), // TODO perhaps this can be removed completely since sub accounts can only be created by the factory owner
+
+        let signer_contract = match network.as_str() {
+            "mainnet" => MAINNET_SIGNER,
+            _ => TESTNET_SIGNER,
         }
+        .parse()
+        .unwrap();
+
+        Self { signer_contract }
     }
 
     #[payable]
@@ -68,7 +76,11 @@ impl ProxyFactory {
             .deploy_contract(code.to_vec())
             .function_call(
                 "new".to_string(),
-                near_sdk::serde_json::to_vec(&ProxyInitArgs { owner_id }).unwrap(),
+                near_sdk::serde_json::to_vec(&ProxyInitArgs {
+                    owner_id,
+                    signer_id: self.signer_contract.clone(),
+                })
+                .unwrap(),
                 NearToken::from_near(0),
                 Gas::from_tgas(50),
             )
@@ -108,8 +120,8 @@ impl ProxyFactory {
         hex::encode(env::sha256(PROXY_CODE))
     }
 
-    pub fn get_owner_id(&self) -> AccountId {
-        self.owner_id.clone()
+    pub fn get_signer_contract(&self) -> AccountId {
+        self.signer_contract.clone()
     }
 }
 
@@ -124,4 +136,5 @@ impl ProxyFactory {
 #[serde(crate = "near_sdk::serde")]
 struct ProxyInitArgs {
     owner_id: AccountId,
+    signer_id: AccountId,
 }

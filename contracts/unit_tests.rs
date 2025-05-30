@@ -20,7 +20,10 @@ mod tests {
     fn test_new() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(accounts(1));
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
         assert_eq!(contract.get_owner_id(), accounts(1));
     }
 
@@ -28,7 +31,10 @@ mod tests {
     fn test_authorize_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
 
         contract.add_authorized_user(accounts(2));
         assert!(contract.is_authorized(accounts(2)));
@@ -38,7 +44,10 @@ mod tests {
     fn test_remove_authorized_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer".to_string()).unwrap(),
+        );
 
         contract.add_authorized_user(accounts(2));
         assert!(contract.is_authorized(accounts(2)));
@@ -52,7 +61,10 @@ mod tests {
     fn test_unauthorized_add_user() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
         contract.add_authorized_user(accounts(3));
     }
 
@@ -60,7 +72,10 @@ mod tests {
     fn test_get_authorized_users() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
 
         contract.add_authorized_user(accounts(2));
         contract.add_authorized_user(accounts(3));
@@ -72,30 +87,14 @@ mod tests {
     }
 
     #[test]
-    fn test_set_signer_contract() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
-
-        contract.set_signer_contract(accounts(2));
-        assert_eq!(contract.get_signer_contract(), accounts(2));
-    }
-
-    #[test]
-    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
-    fn test_unauthorized_set_signer() {
-        let context = get_context(accounts(2));
-        testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
-        contract.set_signer_contract(accounts(3));
-    }
-
-    #[test]
     #[should_panic(expected = "Unauthorized: only authorized users can request signatures")]
     fn test_unauthorized_request_signature() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
         contract.request_signature(
             accounts(3),                                        // contract_id: AccountId
             "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // actions_json: String
@@ -113,7 +112,10 @@ mod tests {
     fn test_disallowed_action() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(accounts(1));
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
 
         testing_env!(get_context(accounts(1)).build());
         contract.add_authorized_user(accounts(2));
