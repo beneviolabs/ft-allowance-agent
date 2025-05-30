@@ -11,7 +11,7 @@ cargo test -- --nocapture
 echo ""
 
 echo -e "${GREEN}Running Factory Contract Tests...${NC}"
-cd ../factory
+cd factory
 cargo test -- --nocapture
 echo ""
 
