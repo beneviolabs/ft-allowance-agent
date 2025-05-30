@@ -27,8 +27,10 @@ pub use crate::models::*;
 pub use crate::serializer::SafeU128;
 
 mod actions;
+mod integration_tests;
 mod models;
 mod serializer;
+mod unit_tests;
 mod utils;
 
 // Constants

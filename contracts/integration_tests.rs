@@ -1,11 +1,11 @@
 #[cfg(test)]
-mod integration_tests {
+mod contract_tests {
 
     use anyhow::Result;
     use near_workspaces::{Account, Contract, DevNetwork, Worker, operations::Function};
     use serde_json::json;
 
-    const WASM_FILEPATH: &[u8] = include_bytes!("../target/near/proxy_contract.wasm");
+    const WASM_FILEPATH: &[u8] = include_bytes!("target/near/proxy_contract.wasm");
 
     async fn init(worker: &Worker<impl DevNetwork>) -> Result<(Contract, Account)> {
         let proxy_contract = worker.dev_deploy(WASM_FILEPATH).await?;
@@ -24,9 +24,20 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn test_proxy_contract_initialization() -> Result<()> {
+    async fn mainnet_proxy_contract_initialization() -> Result<()> {
         let worker = near_workspaces::sandbox().await?;
         let (contract, owner) = init(&worker).await?;
+
+        let contract_owner = contract
+            .call("get_owner_id")
+            .view()
+            .await?
+            .json::<String>()?;
+
+        assert!(
+            contract_owner.ends_with(".near"),
+            "This test expects a mainnet-like owner ID"
+        );
 
         // Test getting the signer contract
         let signer = contract
@@ -35,7 +46,7 @@ mod integration_tests {
             .await?
             .json::<String>()?;
 
-        assert_eq!(signer, "v1.signer-prod.testnet");
+        assert_eq!(signer, "v1.signer");
 
         // Test owner authorization
         let result = contract
@@ -48,6 +59,60 @@ mod integration_tests {
             .json::<bool>()?;
 
         assert!(result, "Owner should be authorized");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn testnet_proxy_contract_initialization() -> Result<()> {
+        let worker = near_workspaces::sandbox().await?;
+        let proxy_contract = worker.dev_deploy(WASM_FILEPATH).await?;
+
+        // Initialize with specific owner
+        let owner_id = "bruce_leroy.testnet";
+        let _result = proxy_contract
+            .call("new")
+            .args_json(json!({
+                "owner_id": owner_id
+            }))
+            .transact()
+            .await?;
+
+        // Test getting the owner
+        let contract_owner = proxy_contract
+            .call("get_owner_id")
+            .view()
+            .await?
+            .json::<String>()?;
+
+        assert!(
+            contract_owner.ends_with(".testnet"),
+            "This test expects a testnet-like owner ID"
+        );
+
+        // Test getting the signer contract
+        let signer = proxy_contract
+            .call("get_signer_contract")
+            .view()
+            .await?
+            .json::<String>()?;
+
+        assert_eq!(
+            signer, "v1.signer-prod.testnet",
+            "Incorrect signer contract"
+        );
+
+        // Test owner authorization
+        let is_authorized = proxy_contract
+            .call("is_authorized")
+            .args_json(json!({
+                "account_id": owner_id
+            }))
+            .view()
+            .await?
+            .json::<bool>()?;
+
+        assert!(is_authorized, "Owner should be authorized");
 
         Ok(())
     }

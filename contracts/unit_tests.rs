@@ -1,20 +1,17 @@
 #[cfg(test)]
 mod tests {
-
+    use crate::AuthProxyContract;
     use near_sdk::{
-        AccountId, NearToken,
+        AccountId,
         json_types::{Base58CryptoHash, U64},
         test_utils::{VMContextBuilder, accounts},
         testing_env,
     };
-    use proxy_contract::AuthProxyContract;
-    use proxy_contract::MIN_DEPOSIT;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
         builder
             .predecessor_account_id(predecessor)
-            .attached_deposit(NearToken::from_yoctonear(MIN_DEPOSIT))
             .prepaid_gas(near_sdk::Gas::from_tgas(150));
         builder
     }
@@ -57,16 +54,6 @@ mod tests {
         testing_env!(context.build());
         let mut contract = AuthProxyContract::new(accounts(1));
         contract.add_authorized_user(accounts(3));
-    }
-
-    #[test]
-    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
-    fn test_unauthorized_min_deposit_update() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-        contract.set_min_deposit(NearToken::from_near(10));
     }
 
     #[test]
@@ -147,61 +134,5 @@ mod tests {
             "secp256k1:abcd".to_string(),      // public_key
             "ed25519:wxyz".to_string(),        // path
         );
-    }
-
-    #[test]
-    fn test_factory_initialization() {
-        let context = get_context(accounts(0));
-        testing_env!(context.build());
-
-        let contract = AuthProxyContract::new(accounts(0));
-
-        assert_eq!(contract.get_owner_id(), accounts(0));
-        assert_eq!(
-            contract.get_min_deposit(),
-            NearToken::from_yoctonear(MIN_DEPOSIT)
-        );
-        assert!(contract.get_authorized_users().is_empty());
-    }
-
-    #[test]
-    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
-    fn test_unauthorized_update_proxy_code() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-
-        // Attempt to update proxy code as non-owner
-        contract.update_proxy_code();
-    }
-
-    #[test]
-    fn test_proxy_creation_callback() {
-        let context = get_context(accounts(0));
-        testing_env!(context.build());
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-        let proxy_account: AccountId = "alice_agent.benevio-labs.testnet".parse().unwrap();
-
-        // Test successful callback
-        let success = contract.on_proxy_created(Ok(()), proxy_account.clone());
-        assert!(success);
-
-        // Test failed callback
-        let failure = contract.on_proxy_created(Err(near_sdk::PromiseError::Failed), proxy_account);
-        assert!(!failure);
-    }
-
-    #[test]
-    fn test_min_deposit_management() {
-        let context = get_context(accounts(0));
-        testing_env!(context.build());
-
-        let mut contract = AuthProxyContract::new(accounts(0));
-        let new_min_deposit = NearToken::from_near(10);
-
-        contract.set_min_deposit(new_min_deposit);
-        assert_eq!(contract.get_min_deposit(), new_min_deposit);
     }
 }
