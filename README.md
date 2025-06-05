@@ -18,23 +18,25 @@ sequenceDiagram
     option no balance
         Wallet--xUser: TBD
     option timeout/browser window closed
-        Wallet-->User: No effect
+        Wallet-->User: TBD
     end
     critical deposit_and_create_proxy()
         Wallet->>ProxyFac: deposit_and_create_proxy()
         ProxyFac->>TradingAcc: i. create proxy account<br>ii. transfer deposit<br>iii.deploy AuthProxy contract<br>iv. call AuthProxy.new to<br> set authorized user (user.near) <br> and MPC signer (v1.signer))
     option trading acc already exists
-
+        ProxyFac-->User: TBD
     option other error
         ProxyFac--xWallet: Refund 4 Ⓝ
     end
 
     critical MPC key registration
         User->>MPC: derive MPC public key for trading account
-    option service unavailable
-        MPC--xUser: Retry
         User->>Wallet: Approve add MPC key + <br> authorized user (peerfolio.near) txn
         Wallet->>TradingAcc: MPC key with full access is set
+    option service unavailable
+        MPC--xUser: Retry flow
+    option user rejects txn
+        Wallet--xUser: TBD
     end
   ```
 
