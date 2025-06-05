@@ -3,7 +3,6 @@
 These are all the various components that interact during a user's onboarding.
 
   ```mermaid
-
 sequenceDiagram
     autonumber
     participant Wallet as NEAR (& Wallet) <br> (crypto-native wallet<br>user.near)
@@ -38,6 +37,11 @@ sequenceDiagram
         Wallet->>TradingAcc: MPC key with full access is set
     end
   ```
+
+Examples
+  - Approve txn: https://testnet.nearblocks.io/txns/CF1ainGjroxtppNTWWkFgQsiC5kC4iJ3X7v8FgLMrWDE?tab=execution
+  - deposit and create proxy: https://testnet.nearblocks.io/txns/CF1ainGjroxtppNTWWkFgQsiC5kC4iJ3X7v8FgLMrWDE?tab=execution#GV1aG4CqY6Lm2L28yb3tdinD2vZ7mZRS8fvPfBzahcnp
+  - MPC key registration: https://testnet.nearblocks.io/txns/5Jyn459DhAaRxEqvTo3x724cgxCpjTH1Jaoc7uyVNQt9
 
 ### Agent execution sequence (swaps etc.)
 
