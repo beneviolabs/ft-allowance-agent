@@ -1,6 +1,6 @@
 ### Onboarding sequence
 
-These are all the various components that interact
+These are all the various components that interact during a user's onboarding.
 
   ```mermaid
 
