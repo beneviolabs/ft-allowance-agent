@@ -1,3 +1,48 @@
+### Onboarding sequence
+
+These are all the various components that interact
+
+  ```mermaid
+
+sequenceDiagram
+    autonumber
+    participant Wallet as NEAR (& Wallet) <br> (crypto-native wallet<br>user.near)
+    participant User as User <br> (Browser)
+    participant ProxyFac as Proxy Factory <br>(ProxyFactory contract<br>auth-v0.peerfolio.near)
+    participant TradingAcc as Proxy/Trading Account <br>(user.auth-v0.peerfolio.near)
+    participant MPC as MPC Contract
+
+    User->>Wallet: Connect wallet
+    Wallet->>User: Function call key for <br> auth-v0.peerfolio.near <br> (limited access)
+    critical Approve txn
+        User->>Wallet: (deposit_and_create_proxy) <br> w/ 4 Ⓝ
+    option no balance
+        Wallet--xUser: TBD
+    option timeout/browser window closed
+        Wallet-->User: No effect
+    end
+    critical deposit_and_create_proxy()
+        Wallet->>ProxyFac: deposit_and_create_proxy()
+        ProxyFac->>TradingAcc: i. create proxy account<br>ii. transfer deposit<br>iii.deploy AuthProxy contract<br>iv. call AuthProxy.new to<br> set authorized user (user.near) <br> and MPC signer (v1.signer))
+    option trading acc already exists
+
+    option other error
+        ProxyFac--xWallet: Refund 4 Ⓝ
+    end
+
+    critical MPC key registration
+        User->>MPC: derive MPC public key for trading account
+    option service unavailable
+        MPC--xUser: Retry
+        User->>Wallet: Approve add MPC key + <br> authorized user (peerfolio.near) txn
+        Wallet->>TradingAcc: MPC key with full access is set
+    end
+  ```
+
+### Agent execution sequence (swaps etc.)
+
+TBD
+
 #### This repo contain the two products
 
 1. [The limited access trading account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) manages authorized users for signature requests, allows one to transfer tokens to their trading and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your trading account. The system consists of two main contracts:
@@ -24,6 +69,17 @@
 
 2. A WIP [Token Allowance Agent ](https://github.com/beneviolabs/ft-allowance-agent/blob/main/0.0.1/agent.py)that capitalizes on market volatility to grow your wealth, by determining which tokens to periodically swap into stablecoins to secure gains without reducing your portfolio below some minimum USD value. Realize these gains for yourself, or setup a conditional recurring allowance for your crypto curious friends & family.
 
+### Deleting a trading/proxy account
+
+1. Add your main account public key to the proxy account with full access permissions
+```
+near contract call-function as-transaction <mainaccount>.auth-v0.peerfolio.testnet add_full_access_key json-args '{"public_key": "<main-account-public-key>"}' prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' sign-as <mainaccount>.testnet network-config testnet sign-with-keychain send
+```
+
+2. Send a delete account transaction signing with your main account key pair
+```
+near account delete-account <mainaccount>.auth-v0.peerfolio.testnet beneficiary <mainaccount>.testnet network-config testnet sign-with-plaintext-private-key --signer-public-key <main-account-public-key> --signer-private-key <main-account-private-key> send
+```
 
 #### TODO - Replace the examples and scripts with details on how to onboard via the langchain agent.
 
