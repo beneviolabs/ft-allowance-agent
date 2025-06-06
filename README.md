@@ -1,3 +1,27 @@
+#### MPC Secured Agent Autonomy
+
+1. [The limited access trading account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) manages authorized users for signature requests, allows one to transfer tokens to their trading account and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your trading account. The system consists of two main contracts:
+    1. Factory Contract (factory.rs):
+
+    - Acts as a proxy contract deployer
+    - Stores proxy code hash for verification
+    - Creates proxy instances with proper initialization (see below for example)
+    - Ensures secure deployment with minimum deposit requirements
+    Example usage: `near call auth-v0.peerfolio.testnet deposit_and_create_proxy \
+  '{"owner_id": "alice.testnet"}' \
+  --accountId alice.testnet \
+  --deposit 4`
+
+    2. Auth Proxy Contract (auth_proxy.rs):
+
+    - Manages authorized users for signature requests
+    - Handles MPC signature generation for approved transactions
+    - Restricts contract interactions to predefined set (wrap.near, intents.near)
+    - Supports specific methods (near_deposit, add_public_key, etc.)
+    Example usage: `near call alice.auth-v0.peerfolio.testnet  request_signature \
+  '{...signature_args...}' \
+  --accountId authorized-agent.testnet`
+
 ### Onboarding sequence
 
 These are all the various components that interact during a user's onboarding.
@@ -48,31 +72,6 @@ Examples
 ### Agent execution sequence (swaps etc.)
 
 TBD
-
-#### MPC Secured Agent Autonomy
-
-1. [The limited access trading account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) manages authorized users for signature requests, allows one to transfer tokens to their trading account and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your trading account. The system consists of two main contracts:
-    1. Factory Contract (factory.rs):
-
-    - Acts as a proxy contract deployer
-    - Stores proxy code hash for verification
-    - [Creates proxy instances](https://testnet.nearblocks.io/txns/8Q8mPTCUxaJnTubwE6ZTHF1ZLvxo9BhVfBBifsuriXAD) with proper initialization
-    - Ensures secure deployment with minimum deposit requirements
-    Example usage: `near call auth-v0.peerfolio.testnet deposit_and_create_proxy \
-  '{"owner_id": "alice.testnet"}' \
-  --accountId alice.testnet \
-  --deposit 4`
-
-    2. Auth Proxy Contract (auth_proxy.rs):
-
-    - Manages authorized users for signature requests
-    - Handles MPC signature generation for approved transactions
-    - Restricts contract interactions to predefined set (wrap.near, intents.near)
-    - Supports specific methods (near_deposit, add_public_key, etc.)
-    Example usage: `near call alice.auth-v0.peerfolio.testnet  request_signature \
-  '{...signature_args...}' \
-  --accountId authorized-agent.testnet`
-
 
 ### Deleting a trading/proxy account
 
