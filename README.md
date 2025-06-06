@@ -82,9 +82,9 @@ TBD
 near contract call-function as-transaction <mainaccount>.auth-v0.peerfolio.testnet add_full_access_key json-args '{"public_key": "<main-account-public-key>"}' prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' sign-as <mainaccount>.testnet network-config testnet sign-with-keychain send
 ```
 
-2. Send a delete account transaction signing with your main account key pair
+2. Send a delete account transaction signing with your main account private key
 ```
-near account delete-account <mainaccount>.auth-v0.peerfolio.testnet beneficiary <mainaccount>.testnet network-config testnet sign-with-plaintext-private-key --signer-public-key <main-account-public-key> --signer-private-key <main-account-private-key> send
+near account delete-account <mainaccount>.auth-v0.peerfolio.testnet beneficiary <mainaccount>.testnet network-config testnet sign-with-plaintext-private-key
 ```
 
 #### TODO - Replace the examples and scripts with details on how to onboard via the langchain agent.
