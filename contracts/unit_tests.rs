@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::AuthProxyContract;
+    use crate::{AuthProxyContract, SignatureResponse};
     use near_sdk::{
         AccountId,
         json_types::{Base58CryptoHash, U64},
@@ -136,5 +136,19 @@ mod tests {
             "secp256k1:abcd".to_string(),      // public_key
             "ed25519:wxyz".to_string(),        // path
         );
+    }
+
+    #[test]
+    fn test_signature_response_serialization() {
+        let response = SignatureResponse {
+            signature: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            scheme: "eddsa".to_string(),
+        };
+
+        let json = serde_json::to_vec(&vec![response]).unwrap();EddsaPayload
+        let decoded: Vec<SignatureResponse> = serde_json::from_slice(&json).unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].signature, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(decoded[0].scheme, "eddsa");
     }
 }
