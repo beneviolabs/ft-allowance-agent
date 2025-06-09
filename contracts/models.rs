@@ -9,13 +9,37 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, JsonSchema, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct EddsaPayload {
-    pub eddsa: String,
+    pub ecdsa: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, JsonSchema, BorshSerialize, BorshDeserialize)]
-pub struct SignatureResponse {
-    pub signature: Vec<u8>,
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct BigR {
+    pub affine_point: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct ScalarValue {
+    pub scalar: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct EcdsaSignatureResponse {
     pub scheme: String,
+    pub big_r: BigR,
+    pub s: ScalarValue,
+    pub recovery_id: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct EddsaSignatureResponse {
+    pub signature: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum SignatureResponse {
+    Eddsa(EddsaSignatureResponse),
+    Ecdsa(EcdsaSignatureResponse),
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]

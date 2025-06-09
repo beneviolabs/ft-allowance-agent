@@ -1,4 +1,5 @@
 use actions::NearAction;
+use hex::FromHex;
 use near_gas::NearGas;
 use near_sdk::base64;
 use near_sdk::collections::UnorderedSet;
@@ -7,12 +8,12 @@ use near_sdk::ext_contract;
 use near_sdk::json_types::{Base58CryptoHash, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, bs58, env, near,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, env, near,
 };
 
 use omni_transaction::TransactionBuilder;
 use omni_transaction::TxBuilder;
-use omni_transaction::near::types::ED25519Signature;
+use omni_transaction::near::types::{ED25519Signature, Secp256K1Signature};
 use omni_transaction::{
     NEAR,
     near::types::{
@@ -241,20 +242,13 @@ impl AuthProxyContract {
         // SHA-256 hash of the serialized transaction
         let hashed_payload = utils::hash_payload(&tx.build_for_signing());
 
-        // Log arguments used for signature request
-        near_sdk::env::log_str(&format!(
-            "Signing request - transaction hash: {:?}, Path: {}, Key Version: {}",
-            bs58::encode(&hashed_payload).into_string(),
-            derivation_path,
-            0
-        ));
         // Create a signature request for the hashed payload
         let request = SignRequest {
             payload_v2: EddsaPayload {
-                eddsa: hex::encode(hashed_payload),
+                ecdsa: hex::encode(hashed_payload),
             },
             path: derivation_path,
-            domain_id: 1,
+            domain_id: 0,
         };
 
         let request_payload = serde_json::json!({ "request": request });
@@ -286,9 +280,9 @@ impl AuthProxyContract {
         tx_json_string: String,
     ) -> String {
         let response = match call_result {
-            Ok(json) => {
-                near_sdk::env::log_str(&format!("Parsed JSON response: {:?}", json));
-                json
+            Ok(response) => {
+                near_sdk::env::log_str(&format!("Raw response: {:?}", response));
+                response
             }
             Err(e) => {
                 near_sdk::env::log_str(&format!("Failed to parse JSON: {:?}", e));
@@ -296,18 +290,53 @@ impl AuthProxyContract {
             }
         };
 
-        near_sdk::env::log_str(&format!("Signature: {:?}", &response.signature));
-
-        let signature_bytes = response.signature;
-
         // Deserialize transaction
         let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
             .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
 
-        let omni_signature = Signature::ED25519(ED25519Signature {
-            r: signature_bytes[0..32].try_into().unwrap(),
-            s: signature_bytes[32..64].try_into().unwrap(),
-        });
+        // Handle different signature formats
+        let omni_signature = match response {
+            SignatureResponse::Eddsa(eddsa) => {
+                near_sdk::env::log_str("Using ED25519 signature format");
+                Signature::ED25519(ED25519Signature {
+                    r: eddsa.signature[0..32].try_into().unwrap(),
+                    s: eddsa.signature[32..64].try_into().unwrap(),
+                })
+            }
+            SignatureResponse::Ecdsa(ecdsa) => {
+                near_sdk::env::log_str("Using SECP256K1 signature format");
+                // Big R value from the MPC signature
+                let big_r = ecdsa.big_r.affine_point;
+                let scalar = ecdsa.s.scalar;
+                let recovery_id = ecdsa.recovery_id;
+                near_sdk::env::log_str(&format!("R value: {}", big_r));
+                near_sdk::env::log_str(&format!("S value: {}", scalar));
+                near_sdk::env::log_str(&format!("Recovery ID value: {}", recovery_id));
+
+                // Split big r into its parts
+                let r = &big_r[2..];
+                let end = &big_r[..2];
+
+                // Convert hex to bytes
+                let r_bytes = Vec::from_hex(r).expect("Invalid hex in r");
+                let s_bytes = Vec::from_hex(scalar).expect("Invalid hex in s");
+                let end_bytes = Vec::from_hex(end).expect("Invalid hex in end");
+
+                // Add individual bytes together in the correct order
+                let mut signature_bytes = [0u8; 65];
+                signature_bytes[..32].copy_from_slice(&r_bytes);
+                signature_bytes[32..64].copy_from_slice(&s_bytes);
+                signature_bytes[64] = end_bytes[0];
+
+                // Create signature
+                Signature::SECP256K1(Secp256K1Signature(signature_bytes))
+            }
+        };
+
+        near_sdk::env::log_str(&format!(
+            "constructed omni signature: {:?}",
+            &omni_signature
+        ));
 
         // Add signature to transaction
         let near_tx_signed = near_tx.build_with_signature(omni_signature);
