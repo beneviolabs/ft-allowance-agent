@@ -14,6 +14,7 @@ use near_sdk::{
 use omni_transaction::TransactionBuilder;
 use omni_transaction::TxBuilder;
 use omni_transaction::near::types::{ED25519Signature, Secp256K1Signature};
+use omni_transaction::near::utils::PublicKeyStrExt;
 use omni_transaction::{
     NEAR,
     near::types::{
@@ -197,7 +198,7 @@ impl AuthProxyContract {
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(utils::convert_pk_to_omni(&mpc_signer_pk))
+            .signer_public_key(mpc_signer_pk.to_public_key().unwrap())
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
