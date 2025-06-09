@@ -66,11 +66,11 @@ execute_add_key() {
         "nonce": "'"$NONCE"'",
         "block_hash": "'"$BLOCK_HASH"'",
         "mpc_signer_pk": "'"$MPC_DERIVED_PK"'",
-        "derivation_path": "'"$AGENT_PROXY_ACCOUNT"'"
+        "account_pk_for_mpc": "'"$AGENT_PROXY_ACCOUNT"'"
     }'
     near call $AGENT_PROXY_ACCOUNT request_signature "$ADD_PUBLIC_KEY_ARGS" \
         --accountId $AGENT_ID \
-        --deposit 0 \
+        --deposit 1 \
         --gas 100000000000000
 }
 
@@ -87,7 +87,7 @@ execute_deposit() {
         "nonce": "'"$NONCE"'",
         "block_hash": "'"$BLOCK_HASH"'",
         "mpc_signer_pk": "'"$MPC_DERIVED_PK"'",
-        "derivation_path": "'"$AGENT_PROXY_ACCOUNT"'"
+        "account_pk_for_mpc": "'"$AGENT_PROXY_ACCOUNT"'"
     }'
     near call $AGENT_PROXY_ACCOUNT request_signature "$DEPOSIT_ARGS" \
         --accountId $AGENT_ID \
