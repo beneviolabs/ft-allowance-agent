@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{AuthProxyContract, SignatureResponse};
+    use crate::{
+        AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
+        SignatureResponse,
+    };
     use near_sdk::{
         AccountId,
         json_types::{Base58CryptoHash, U64},
@@ -140,15 +143,44 @@ mod tests {
 
     #[test]
     fn test_signature_response_serialization() {
-        let response = SignatureResponse {
+        // Test EDDSA signature response
+        let eddsa_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
             signature: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            scheme: "eddsa".to_string(),
-        };
+        });
 
-        let json = serde_json::to_vec(&vec![response]).unwrap();EddsaPayload
-        let decoded: Vec<SignatureResponse> = serde_json::from_slice(&json).unwrap();
-        assert_eq!(decoded.len(), 1);
-        assert_eq!(decoded[0].signature, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-        assert_eq!(decoded[0].scheme, "eddsa");
+        let json = serde_json::to_string(&eddsa_response).unwrap();
+        let decoded: SignatureResponse = serde_json::from_str(&json).unwrap();
+
+        match decoded {
+            SignatureResponse::Eddsa(eddsa) => {
+                assert_eq!(eddsa.signature, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+            }
+            _ => panic!("Expected EDDSA signature response"),
+        }
+
+        // Test ECDSA signature response
+        let ecdsa_response = SignatureResponse::Ecdsa(EcdsaSignatureResponse {
+            scheme: "Secp256k1".to_string(),
+            big_r: BigR {
+                affine_point: "03D0E412BEEBF4B0191C08E13323466A96582C95A2B0BAF4CB6859968B86C01157"
+                    .to_string(),
+            },
+            s: ScalarValue {
+                scalar: "1AE54A1E7D404FD655B43C05DA78D1A6DC5ABAC2AE2A8338F03580D14A2C17F9"
+                    .to_string(),
+            },
+            recovery_id: 1,
+        });
+
+        let json = serde_json::to_string(&ecdsa_response).unwrap();
+        let decoded: SignatureResponse = serde_json::from_str(&json).unwrap();
+
+        match decoded {
+            SignatureResponse::Ecdsa(ecdsa) => {
+                assert_eq!(ecdsa.scheme, "Secp256k1");
+                assert_eq!(ecdsa.recovery_id, 1);
+            }
+            _ => panic!("Expected ECDSA signature response"),
+        }
     }
 }
