@@ -248,7 +248,7 @@ impl AuthProxyContract {
                 ecdsa: hex::encode(hashed_payload),
             },
             path: derivation_path,
-            domain_id: 0,
+            domain_id: 0, //TODO make this a param so clients can request siggys for addresses on different chains
         };
 
         let request_payload = serde_json::json!({ "request": request });
@@ -281,7 +281,7 @@ impl AuthProxyContract {
     ) -> String {
         let response = match call_result {
             Ok(response) => {
-                near_sdk::env::log_str(&format!("Raw response: {:?}", response));
+                near_sdk::env::log_str(&format!("Parsed JSON response: {:?}", response));
                 response
             }
             Err(e) => {
