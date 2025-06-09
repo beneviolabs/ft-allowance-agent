@@ -224,8 +224,8 @@ impl AuthProxyContract {
         // Convert any large deposit numbers to strings in the JSON
         let modified_tx_string = deposits.iter().fold(tx_json_string, |acc, deposit| {
             acc.replace(
-                &format!("\"deposit\":{}", deposit.0.to_string()),
-                &format!("\"deposit\":\"{}\"", deposit.0.to_string()),
+                &format!("\"deposit\":{}", deposit.0),
+                &format!("\"deposit\":\"{}\"", deposit.0),
             )
         });
         tx_json_string = modified_tx_string;
