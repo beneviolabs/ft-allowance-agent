@@ -6,6 +6,12 @@ use omni_transaction::near::types::{Action, BlockHash, PublicKey, Signature, U64
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Debug, JsonSchema, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct EddsaPayload {
+    pub ecdsa: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct BigR {
     pub affine_point: String,
@@ -17,17 +23,30 @@ pub struct ScalarValue {
 }
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
-pub struct SignatureResponse {
+pub struct EcdsaSignatureResponse {
+    pub scheme: String,
     pub big_r: BigR,
     pub s: ScalarValue,
     pub recovery_id: u8,
 }
 
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct EddsaSignatureResponse {
+    pub signature: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum SignatureResponse {
+    Eddsa(EddsaSignatureResponse),
+    Ecdsa(EcdsaSignatureResponse),
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct SignRequest {
-    pub payload: Vec<u8>,
+    pub payload_v2: EddsaPayload,
     pub path: String,
-    pub key_version: u32,
+    pub domain_id: u32,
 }
 
 // port of the private struct from omni-transaction-rs https://github.com/near/omni-transaction-rs/blob/fefa9f2987c7112a546ca7308d7f064e9fed267f/src/near/near_transaction.rs#L54
