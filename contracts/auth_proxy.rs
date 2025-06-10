@@ -208,8 +208,8 @@ impl AuthProxyContract {
         near_sdk::env::log_str(&format!(
             "Transaction details before signing:
             - Signer ID: {}
-            - Receiver ID: {?}
-            - derivation_path: {?}
+            - Receiver ID: {}
+            - derivation_path: {}
             - Signer Public Key: {}
             - Number of Actions: {}",
             tx.signer_id,
