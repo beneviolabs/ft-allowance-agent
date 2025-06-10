@@ -23,7 +23,7 @@ sha2 = "0.10.8"
 serde_json = "1.0"
 hex = "0.4.3"
 schemars = "0.8.22"
-bs58 = "0.4.0"
+bs58 = "0.5.1"
 near-account-id = "=1.0.0"
 
 

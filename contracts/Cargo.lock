@@ -2191,7 +2191,7 @@ dependencies = [
  "anyhow",
  "borsh",
  "borsh-derive",
- "bs58 0.4.0",
+ "bs58 0.5.1",
  "hex",
  "near-account-id",
  "near-contract-standards",

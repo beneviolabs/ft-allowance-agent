@@ -1,5 +1,4 @@
 use actions::NearAction;
-use hex::FromHex;
 use near_gas::NearGas;
 use near_sdk::base64;
 use near_sdk::collections::UnorderedSet;
@@ -205,6 +204,21 @@ impl AuthProxyContract {
             .actions(omni_actions.clone())
             .build();
 
+        // Log transaction details
+        near_sdk::env::log_str(&format!(
+            "Transaction details before signing:
+            - Signer ID: {}
+            - Receiver ID: {?}
+            - derivation_path: {?}
+            - Signer Public Key: {}
+            - Number of Actions: {}",
+            tx.signer_id,
+            tx.receiver_id,
+            derivation_path,
+            mpc_signer_pk,
+            tx.actions.len()
+        ));
+
         // Extract deposit values from omni_actions
         let deposits: Vec<OmniU128> = omni_actions
             .iter()
@@ -295,6 +309,9 @@ impl AuthProxyContract {
         let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
             .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
 
+        let message_hash = utils::hash_payload(&near_tx.build_for_signing());
+        near_sdk::env::log_str(&format!("Message hash: {}", hex::encode(message_hash)));
+
         // Handle different signature formats
         let omni_signature = match response {
             SignatureResponse::Eddsa(eddsa) => {
@@ -306,28 +323,36 @@ impl AuthProxyContract {
             }
             SignatureResponse::Ecdsa(ecdsa) => {
                 near_sdk::env::log_str("Using SECP256K1 signature format");
-                // Big R value from the MPC signature
-                let big_r = ecdsa.big_r.affine_point;
-                let scalar = ecdsa.s.scalar;
-                let recovery_id = ecdsa.recovery_id;
-                near_sdk::env::log_str(&format!("R value: {}", big_r));
-                near_sdk::env::log_str(&format!("S value: {}", scalar));
-                near_sdk::env::log_str(&format!("Recovery ID value: {}", recovery_id));
+                // Convert signature components
+                let r = hex::decode(&ecdsa.big_r.affine_point[2..]).expect("Invalid hex in r");
+                let s = hex::decode(&ecdsa.s.scalar).expect("Invalid hex in s");
+                let v = ecdsa.recovery_id;
 
-                // Split big r into its parts
-                let r = &big_r[2..];
-                let end = &big_r[..2];
+                // Combine r and s for verification
+                let mut signature = Vec::with_capacity(64);
+                signature.extend_from_slice(&r);
+                signature.extend_from_slice(&s);
 
-                // Convert hex to bytes
-                let r_bytes = Vec::from_hex(r).expect("Invalid hex in r");
-                let s_bytes = Vec::from_hex(scalar).expect("Invalid hex in s");
-                let end_bytes = Vec::from_hex(end).expect("Invalid hex in end");
+                // Verify signature
+                let recovered = self.test_recover(message_hash.to_vec(), signature, v);
+                match recovered {
+                    Some(public_key) => {
+                        near_sdk::env::log_str(&format!(
+                            "Signature verified! Recovered public key: {}",
+                            public_key
+                        ));
+                    }
+                    None => {
+                        near_sdk::env::log_str("Signature verification failed!");
+                        panic!("Invalid signature: ecrecover failed");
+                    }
+                }
 
                 // Add individual bytes together in the correct order
                 let mut signature_bytes = [0u8; 65];
-                signature_bytes[..32].copy_from_slice(&r_bytes);
-                signature_bytes[32..64].copy_from_slice(&s_bytes);
-                signature_bytes[64] = end_bytes[0];
+                signature_bytes[..32].copy_from_slice(&r);
+                signature_bytes[32..64].copy_from_slice(&s);
+                signature_bytes[64] = v;
 
                 // Create signature
                 Signature::SECP256K1(Secp256K1Signature(signature_bytes))
@@ -347,5 +372,24 @@ impl AuthProxyContract {
         near_sdk::env::log_str(&format!("Signed transaction (base64): {}", base64_tx));
 
         base64_tx
+    }
+
+    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
+        let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
+
+        env::log_str(&format!("Hash: {}", hex::encode(&hash)));
+        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
+        env::log_str(&format!("V: {}", v));
+
+        recovered.map(|key: [u8; 64]| {
+            // Add prefix byte for secp256k1 (0x01)
+            let mut prefixed_key = vec![0x01];
+            prefixed_key.extend_from_slice(&key);
+
+            let key = format!("secp256k1:{}", bs58::encode(&prefixed_key).into_string());
+
+            env::log_str(&format!("Recovered key: {}", key));
+            key
+        })
     }
 }
