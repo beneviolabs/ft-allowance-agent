@@ -1,17 +1,27 @@
 ## WIP
 
 ##### Major enhancements:
-  - suport sending a specific token type and quantity from trading account
+  - launch multiplayer functionality
+  - launch support for mainstream consumers:
+    - via a passkey-based onboarding flow. create a flow diagram to vet the use of webAuthn and fully plan this architecture.
+  - Support ETH, SOL, XRP, and BTC in the deposit to token aquisition flow
   - Offramp: support raincards only?
   - build a dashboard that shows:
     - the conversion rate from visit to successful onramp deposit
     - the execution rate of saved growth goals showing the time the goal was created, and date, amount of swap execution
 
 
-##### Offramp User Journey
-Context: Ok so now I have USDC on my agent trading account. Now what? How do we faciliate one sending this to their exchange account, e.g. Coinbase.
 
+##### Support ETH, SOL, XRP, and BTC in the deposit to token aquisition flow
+1. categorize into themes asset objects around these assets + Near, to which we can add more assets in the future. Key=token_ticker Value=percentage_allocation. USDC should be included here.
+1. Is there any legal or UX benefit to leting users modify the percentages?
+1.
 
+#### Offramp: User wants to withdraw some funds to their raincard
+1.
+
+#### Offramp: User wants to withdraw some funds to their CEX address(es)
+1.
 
 ####  Sandbox flow:
 1. Alice says: Before we do anything on mainnet. I'd like to get a better understanding on how you securely trade on my behalf by first running some test trades. Can we do that?
@@ -22,5 +32,4 @@ Context: Ok so now I have USDC on my agent trading account. Now what? How do we 
 1. Alice says: actually my portfolio is underwater. I invested a total of $200 into a combination of Near and ETH. Both prices have since gone down, so I don't want to swap for stablecoins until my portfolio is worth more.
 1. Agent says: Understood. If you are interested in aquiring any other tokens, please let me know what types of tokens and what quantities.
 1.  Do we need to support this flow? This may become lower needed priority for our mainstream consumers.
-
 

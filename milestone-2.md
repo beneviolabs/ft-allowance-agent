@@ -7,42 +7,58 @@
 - when do onboarding preferences come into play?
 
 #### Major enhancements: // TODO finish user journeys for each of these
+- Product Design for multiplayer mode
 - auto execute conditional swap goals given market conditions
 - adds SMS notifications
-- support ETH, SOL, XRP, and BTC in the fund trading account, deposit, and goal swap flows
+- design the flow of supporting a all of the below in input/output token types. Must I generate a chainsiggy address for the corresponding token type? Or can they stay on the intent address associated with the near trading account? The latter should be possible via one-click's [recipientType=INTENTS](https://docs.near-intents.org/near-intents/integration/distribution-channels/1click-api#post-v0-quote)
+
+how to query intents to see assets asscoatied to a near account within intents?
+ by a view function call for each token, to [intents.near](https://docs.near-intents.org/near-intents/market-makers/verifier/deposits-and-withdrawals/balances-and-identifying-your-token#checking-your-balance)
+
+- Support ETH, SOL, XRP, and BTC in the deposit to token aquisition flow
 - adds withdraw all / close your trading account.
-- suport withdrawal of a specific USD amount from trading account
-- to support mainstream consumers:
-  - adds a passkey-based onboarding flow. create a flow diagram to vet the use of webAuthn and fully plan this architecture.
+- support withdrawal of a specific token and amount from trading account
+  how to use one-click to withdraw from intents to destination chain? - one must near rpc call the 'withdraw' method on each token to be withdrawn, then use intent's PoA's bridge API [query the withdrawl status](https://docs.near-intents.org/near-intents/market-makers/poa-bridge-api#how-to-use)
+
+- technical design support for mainstream consumers:
+  - via a passkey-based onboarding flow. create a flow diagram to vet the use of webAuthn and fully plan this architecture.
 
 
-##### Notifications:
+##### SMS Notifications:
 1. During onboarding: We'll need to ask for the user's phone number, and verify it by sending and requesting they enter a OTP.
-1. On successful automated swap: "Cha-ching. Your USD was realized. You now have an extra [USD-amount] in your trading account."
-1. From milestone-1, User declines to act due to current market state:
-  Agent says: Totally understood — I won’t suggest any swaps for now. Would you like me to ping you when your portfolio crosses back above $200? I can send a message via SMS or Telegram — just let me know.
+1. On successful automated swap: "Cha-ching. Your $ goal was realized. You now have an extra [USD-amount] in your trading account."
+1. From milestone-1, User declines to set a swap goal due to current market state:
+  Agent says: Totally understood — I won’t suggest any goals for now. Would you like me to ping you when your portfolio crosses back above $200? I can send a message via SMS or Telegram — just let me know.
 
-  Do we need to support the above scenario right now?
+  User: yes
 
+  Agent: Ok. I'll text you if/when your portfolio crosses above $200 and we can discuss creating an allowance goal.
+
+  On portfolio crossing USD threshold: "Your portfolio/peerfolio? has reached new heights. Let's review the details and consdier new goals <app link>"
+
+1. Do we need to support any additional notifications at this stage?
+
+
+#### Auto execute conditional swap goals given market conditions
+
+
+
+##### Support ETH, SOL, XRP, and BTC in the deposit to token aquisition flow
+1. Store in the client, an initial allocation object where Key=token_ticker Value=percentage_allocation. USDC should be included here.
+1. The architecture will be expanded upon in milestone 3 as themed asset allocation buckets that will be used to guide users towards converting their deposits into these sets of tokens.
+1. Allow the agent to take action when a user makes a deposit, to initiate the purchase of all of the assets in the initial allocation bucket.
 1.
 
-##### User Journey Post Successful Swaps
-Context: Ok so now I have USDC on my agent trading account. Now what? How do we faciliate one sending this to their exchange account, e.g. Coinbase.
-1.
 
-
-##### Withdrawals: User wants to withdraw select funds to their external wallets.
+##### Withdrawal Some: User wants to withdraw select tokens to their external wallets. - should this be agent based or fully UI based?
 1. Alice: Hey, I want to move tokens out of my trading account.
 1. Agent: Ok. Would you like to to move all the tokens from your trading account to your main account?
 1. Alice: "No I only want to move 3 Near and 10 ETH" or "No I want to withdraw $200 worth."
 1.
 
 
-#### Withdrawals: User wants to withdraw some funds to their raincard
-1.
 
-
-##### Offboarding: User wants to withdraw all / close trading account
+##### Withdrawal All: User wants to withdraw all / close trading account
 1. Alice: Hey, I want to move tokens out of my trading account.
 1. Agent: Ok. Would you like to to move all the tokens from your trading account to your main account?
 1. Alice: Yes
@@ -53,10 +69,6 @@ User interacts with the wallet and then returns to Peerfolio.
 1. Agent: ✅ I’ve moved your tokens back to your main account. You can view the transaction here if you’d like. Let me know if you want to create a new goal or check your portfolio details.
 
 
-##### Less than Happy Path: User declines to act due to current market state
-1. Alice says: actually my portfolio is underwater. I invested a total of $200 into a combination of Near and ETH. Both prices have since gone down, so I don't want to swap for stablecoins until my portfolio is worth more.
-1. Agent says: Totally understood — I won’t suggest any swaps for now.
 
-
-##### Less than Happy Path 2
+##### Passkey-based onboarding flow for Normies
 
