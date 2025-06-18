@@ -1,11 +1,16 @@
-## WIP
+#### WIP Milestone 3
 
-##### Major enhancements:
+<b>Audience:</b> Mainstream Consumers.
+<b>Overview:</b>
+
+##### Major enhancements // TODO Turn these info fully scoped issues
   - launch multiplayer functionality
   - launch support for mainstream consumers:
     - via a passkey-based onboarding flow. create a flow diagram to vet the use of webAuthn and fully plan this architecture.
   - Support ETH, SOL, XRP, and BTC in the deposit to token aquisition flow
-  - Offramp: support raincards only?
+  - Expand the token acquisition flow to
+asset allocation buckets, e.g. Highest Market Cap (BTC), AI Focused (NEAR, ICP, TAO), DeFi & Prediction Markets (ETH), and NFT/Memecoins
+  - Offramp: Alpha release of Raincard integration. Design the required onboarding and technical designs for Raincard integration
   - build a dashboard that shows:
     - the conversion rate from visit to successful onramp deposit
     - the execution rate of saved growth goals showing the time the goal was created, and date, amount of swap execution
