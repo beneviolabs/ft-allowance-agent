@@ -16,6 +16,16 @@ asset allocation buckets, e.g. Highest Market Cap (BTC), AI Focused (NEAR, ICP, 
     - the execution rate of saved growth goals showing the time the goal was created, and date, amount of swap execution
 
 
+##### Passkey-based onboarding flow for mainstream consumers
+  - via a passkey-based onboarding flow. create a flow diagram to vet the use of webAuthn and fully plan this architecture.
+
+```mermaid
+sequenceDiagram
+    end
+```
+
+
+
 
 ##### Support ETH, SOL, XRP, and BTC in the deposit to token aquisition flow
 1. categorize into themes asset objects around these assets + Near, to which we can add more assets in the future. Key=token_ticker Value=percentage_allocation. USDC should be included here.
