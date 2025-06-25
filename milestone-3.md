@@ -1,10 +1,10 @@
 #### WIP Milestone 3
 
 <b>Audience:</b> Mainstream Consumers.
-<b>Overview:</b> Your self-described luddite friend finds Peerlio from a web search, after a brief chat with the Peerfolio Agent, Friend is convinced that they will use Peerfolio as their first venture into acquiring crypto.
+<b>Overview:</b> Your self-described luddite friend finds Peerfolio from a web search, after a brief chat with the Peerfolio Agent, Friend is convinced that they will use Peerfolio as their first venture into acquiring crypto.
 
 #### Requirements and Acceptance Criteria
-- As a user (mainstream consumer) I should be able to onboard into the fully designed, mobile-first Peerfolio app, deployed on a v0.peerfolio.app domain, where I'm able to onboard and setup with trading account with minimum interactions with wallet approval screens. After onboarding, the app guides me to choose between a token allocation scheme that matches my interests and risk preferences, followed by an onramp flow that lets me convert some amount of fiat into the aforementioned token allocations.
+- As a user (mainstream consumer) I should be able to onboard into the fully designed, mobile-first Peerfolio app, deployed on a v0.peerfolio.app domain, where I'm able to onboard and setup a trading account with minimum interactions with wallet approval screens. After onboarding, the app guides me to choose between a token allocation scheme that matches my interests and risk preferences, followed by an onramp flow that lets me convert some amount of fiat into the aforementioned token allocations.
 
 #### Nice to haves:
 - Offramp: Alpha release of Raincard integration. Design the required onboarding and technical designs for Raincard integration.
@@ -21,10 +21,6 @@ asset allocation buckets, e.g. Highest Market Cap (BTC), AI Focused (NEAR, ICP, 
     - the conversion rate from visit to successful onramp deposit
     - the execution rate of saved growth goals showing the time the goal was created, and date, amount of swap execution
 
-
-
-
-#### Questions:
 
 
 
