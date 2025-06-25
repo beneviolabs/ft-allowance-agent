@@ -1,7 +1,7 @@
 #### Milestone 2
 
 <b>Audience:</b> Crypto-Native Users.
-<b>Overview:</b> Your self-described luddite friend finds Peerlio from a web search, after a brief chat with the Peerfolio Agent, Friend is convinced that they will use Peerfolio as their first venture into acquiring crypto.
+<b>Overview:</b> Your tech-savvy near account holder is invited to try Peerfolio. After a brief chat with the Peerfolio Agent, they are convinced that they will use Peerfolio as their first venture into acquiring crypto.
 
 
 #### Requirements and Acceptance Criteria
