@@ -5,6 +5,9 @@
 
 #### Requirements and Acceptance Criteria
 - As a user (mainstream consumer) I should be able to onboard into the fully designed, mobile-first Peerfolio app, deployed on a v0.peerfolio.app domain, where I'm able to onboard and setup a trading account with minimum interactions with wallet approval screens. After onboarding, the app guides me to choose between a token allocation scheme that matches my interests and risk preferences, followed by an onramp flow that lets me convert some amount of fiat into the aforementioned token allocations.
+- To maintain an experience for crypto-native users with existing wallets to attempt to bridge the gap between crypto-native and mainstream experiences, we can keep the wallet connect option in the UI, and consider how to make it visually a secondary-option, e.g. already have a wallet, click here to connect versus the primary onboarding option.
+
+
 
 #### Nice to haves:
 - Offramp: Alpha release of Raincard integration. Design the required onboarding and technical designs for Raincard integration.
@@ -20,7 +23,8 @@ asset allocation buckets, e.g. Highest Market Cap (BTC), AI Focused (NEAR, ICP, 
 - build a dashboard that shows:
     - the conversion rate from visit to successful onramp deposit
     - the execution rate of saved growth goals showing the time the goal was created, and date, amount of swap execution
-
+    - retention and group functionality (target of 3 users completing invite to stash creation without friction) as well. So we can check reality against retention targets of 40% (7-day), 25% (14-day), and 15% (30-day) for crypto-native users, and 30% (7-day), 20% (14-day), and 12% (30-day) for mainstream consumers.
+- [Conduct User testing](https://github.com/beneviolabs/ft-allowance-agent/issues/111)
 
 
 
