@@ -4,12 +4,15 @@ mod tests {
         AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
         SignatureResponse,
     };
+    use near_sdk::PublicKey;
     use near_sdk::{
         AccountId,
         json_types::{Base58CryptoHash, U64},
         test_utils::{VMContextBuilder, accounts},
         testing_env,
     };
+    use omni_transaction::near::utils::PublicKeyStrExt;
+    use std::str::FromStr;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
@@ -182,5 +185,58 @@ mod tests {
             }
             _ => panic!("Expected ECDSA signature response"),
         }
+    }
+
+    #[test]
+    fn test_add_full_access_key_owner() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+        let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
+        let result = contract.add_full_access_key(pk);
+        // We can't fully test Promise chain, but we can check the type
+        assert!(matches!(result, near_sdk::Promise { .. }));
+    }
+
+    #[test]
+    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
+    fn test_add_full_access_key_non_owner() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+        let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
+        contract.add_full_access_key(pk);
+    }
+
+    #[test]
+    fn test_add_full_access_key_and_register_with_intents_owner() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+        let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
+        let result = contract.add_full_access_key_and_register_with_intents(pk);
+        assert!(matches!(result, near_sdk::Promise { .. }));
+    }
+
+    #[test]
+    #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
+    fn test_add_full_access_key_and_register_with_intents_non_owner() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+        let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
+        contract.add_full_access_key_and_register_with_intents(pk);
     }
 }

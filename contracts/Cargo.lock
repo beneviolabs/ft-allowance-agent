@@ -2199,6 +2199,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "omni-transaction",
+ "once_cell",
  "schemars",
  "serde",
  "serde_json",
