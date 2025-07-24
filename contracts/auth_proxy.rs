@@ -22,6 +22,9 @@ use omni_transaction::{
     },
 };
 
+use once_cell::sync::Lazy;
+static NEAR_INTENTS_ADDRESS: Lazy<AccountId> = Lazy::new(|| "intents.near".parse().unwrap());
+
 pub use crate::models::*;
 pub use crate::serializer::SafeU128;
 
@@ -283,9 +286,30 @@ impl AuthProxyContract {
             )
     }
 
-    pub fn add_full_access_key(&mut self, public_key: PublicKey) {
+    pub fn add_full_access_key(&mut self, public_key: PublicKey) -> Promise {
         self.assert_owner();
-        Promise::new(env::current_account_id()).add_full_access_key(public_key);
+        Promise::new(env::current_account_id()).add_full_access_key(public_key)
+    }
+
+    #[payable]
+    pub fn add_full_access_key_and_register_with_intents(
+        &mut self,
+        public_key: PublicKey,
+    ) -> Promise {
+        assert_eq!(
+            env::attached_deposit(),
+            NearToken::from_yoctonear(1),
+            "This method requires an attached deposit of exactly 1 yoctoNear"
+        );
+        let request_payload = serde_json::json!({ "public_key": public_key });
+        self.add_full_access_key(public_key).then(
+            Promise::new(NEAR_INTENTS_ADDRESS.clone()).function_call(
+                "add_public_key".to_string(),
+                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                env::attached_deposit(),
+                BASE_GAS,
+            ),
+        )
     }
 
     #[private] // Only callable by the contract itself
