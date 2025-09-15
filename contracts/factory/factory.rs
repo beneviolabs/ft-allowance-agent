@@ -1,7 +1,7 @@
 use bs58;
 use near_sdk::serde::Serialize;
 use near_sdk::{
-    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, env, near,
+    env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey,
 };
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
