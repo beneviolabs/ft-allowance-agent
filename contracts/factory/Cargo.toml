@@ -12,6 +12,7 @@ path = "factory.rs"
 [dependencies]
 near-sdk = { version = "5.17.2", features = ["unit-testing", "unstable", "global-contracts"] }
 hex = "0.4.3"
+bs58 = "0.5"
 
 [profile.release]
 codegen-units = 1
