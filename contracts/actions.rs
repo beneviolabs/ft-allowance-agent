@@ -16,7 +16,7 @@ impl NearAction {
             "add_public_key",
             "ft_transfer_call",
             "near_deposit",
-            "sign_intent",
+            "mt_transfer_call",
         ];
         if !allowed_contracts.contains(&self.contract_id.as_str()) {
             panic!(
