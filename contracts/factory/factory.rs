@@ -44,7 +44,7 @@ impl ProxyFactory {
         let deposit = env::attached_deposit();
         assert!(
             deposit >= NearToken::from_yoctonear(1_000_000),
-            "Must attach at least 1000 yⓃ"
+            "Must attach at least 1000 yⓃ" // TODO: make this amount more precise - how much of a deposit must one add? 0.0025?
         );
 
         self.create_proxy_global(owner_id.clone()).then(

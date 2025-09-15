@@ -1,6 +1,6 @@
 # Global Contract Workflow Documentation
 
-This document outlines the complete process for building, deploying, and using global contracts with the Auth Proxy Factory system.
+This document outlines the complete process for building, deploying, and using global contracts with the Auth Proxy Factory contracts.
 
 ## Overview
 
@@ -10,8 +10,7 @@ The global contract feature (NEP-591) allows deploying contract code once global
 
 - NEAR CLI installed (`npm install -g near-cli`)
 - Rust toolchain with wasm32-unknown-unknown target
-- near's cargo extension to support running: env RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm
-- Access to peerfolio.near account
+- near's cargo extension to support running: `./contracts/build_auth_proxy.sh` and `/contracts/factory/factory-deploy.sh`
 
 ## 1. Build and Globally Deploy Auth Proxy Contract
 
@@ -25,14 +24,14 @@ cd contracts
 ./build_auth_proxy.sh
 ```
 
-# Notice the bs58 hash in the output
+Notice the bs58 hash in the output
 ```
 
      - SHA-256 checksum hex : c9acef2aaaab73d07684b79b4655f7ab946c7e15e3091f1fae6bc5df86566bd9
      ** - SHA-256 checksum bs58: EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz **
     Finished cargo near build in 19s
 ```
-# This bs58 hash should equal the code_hash returned from the near-cli-rs global deploy transaction.
+This bs58 hash should equal the code_hash returned from the near-cli-rs global deploy transaction.
 
 ### Step 1.2: Deploy as Global Contract
 
@@ -71,7 +70,7 @@ FACTORY_OWNER="base-account.testnet"
 cd contracts/factory
 
 # Run the deployment script
-NEAR_ENV=mainnet ./factory-deploy.sh
+NEAR_ENV=testnet ./factory-deploy.sh
 ```
 
 **What happens:**
@@ -82,12 +81,14 @@ NEAR_ENV=mainnet ./factory-deploy.sh
 
 ### Step 2.3: Verify Factory Deployment
 
+You should see matching SHA-256 checksum hex hashes output from these two commands.
+
 ```bash
 # Check factory contract state
 near state auth-v1.base-account.testnet
 
 # View the stored global contract hash
-near call auth-v1.base-account.testnet get_proxy_code_hash --accountId base-account.testnet
+near call auth-v1.base-account.testnet get_proxy_code_hash_hex --accountId base-account.testnet
 ```
 
 
@@ -106,12 +107,12 @@ near call auth-v1.base-account.testnet get_proxy_code_hash --accountId base-acco
 - Migration to different account structure
 - Major version upgrades
 
-### Step 3.1: Update Global Contract Hash
+### Step 3.1: Update Factory to point to the latest Global Proxy Contract Hash
 
 If you've deployed a new version of the auth proxy globally:
 
 ```bash
-# Update the factory with new global contract hash
+# Update the factory with new base58 encoded global contract hash
 near call auth-v1.base-account.testnet set_global_code_hash \
   '{"code_hash_str": "NEW_GLOBAL_HASH_HERE"}' \
   --accountId base-account.testnet
@@ -126,7 +127,7 @@ For factory code updates:
 cd contracts/factory
 
 # Run deployment script (will update existing contract)
-NEAR_ENV=mainnet ./factory-deploy.sh
+NEAR_ENV=testnet ./factory-deploy.sh
 ```
 
 **Note:** The script automatically detects if the account exists and updates the contract instead of creating a new one.
@@ -134,8 +135,8 @@ NEAR_ENV=mainnet ./factory-deploy.sh
 ### Step 3.3: Verify Update
 
 ```bash
-# Check the updated global hash
-near call auth-v1.base-account.testnet get_proxy_code_hash --accountId base-account.testnet
+# Check the updated global hash via get_proxy_code_hash_hex or get_proxy_code_base58_hash
+near call auth-v1.base-account.testnet get_proxy_code_base58_hash --accountId base-account.testnet
 
 
 ## 4. Create Trading Account via Global Contract
@@ -162,7 +163,7 @@ near call auth-v1.peerfolio.testnet deposit_and_create_proxy_global \
 near state trader.auth-v1.peerfolio.testnet
 
 # Verify it's Global Contract (by Hash: SHA-256 checksum hex) matches the factory's hex hash of the bs58 code
-near call auth-v1.peerfolio.testenet get_proxy_code_hash_hex '{}'
+near call auth-v1.peerfolio.testnet get_proxy_code_hash_hex '{}'
 ```
 
 ## Migration Strategy
