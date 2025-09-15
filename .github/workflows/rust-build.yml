@@ -36,7 +36,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install cargo-near
-        run: cargo install cargo-near --version 0.15  --locked
+        run: cargo install cargo-near --version 0.15.0 --locked
 
       - name: Build Rust code
         run: |
