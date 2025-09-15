@@ -81,14 +81,11 @@ NEAR_ENV=testnet ./factory-deploy.sh
 
 ### Step 2.3: Verify Factory Deployment
 
-You should see matching SHA-256 checksum hex hashes output from these two commands.
+The base58 hash output from the call below should match the hash output from the global deploy transaction, and match the bs58 output if you re-run `./build_auth_proxy.sh`. There is no harm in running that command multiple times.
 
 ```bash
-# Check factory contract state
-near state auth-v1.base-account.testnet
-
 # View the stored global contract hash
-near call auth-v1.base-account.testnet get_proxy_code_hash_hex --accountId base-account.testnet
+near call auth-v1.base-account.testnet get_proxy_code_base58_hash --accountId base-account.testnet
 ```
 
 
