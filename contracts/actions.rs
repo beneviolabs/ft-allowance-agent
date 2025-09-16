@@ -17,6 +17,7 @@ impl NearAction {
             "ft_transfer_call",
             "near_deposit",
             "mt_transfer_call",
+            "mt_transfer",
         ];
         if !allowed_contracts.contains(&self.contract_id.as_str()) {
             panic!(

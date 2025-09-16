@@ -37,6 +37,8 @@ jobs:
 
       - name: Install cargo-near
         run: cargo install cargo-near --version 0.15.0 --locked
+        uses: dtolnay/rust-toolchain@master
+          toolchain: nightly
 
       - name: Build Rust code
         run: |
@@ -44,4 +46,4 @@ jobs:
           chmod +x build_auth_proxy.sh
           ./build_auth_proxy.sh
           cd factory
-          RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi --enable-bulk-memory
+          RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
