@@ -11,7 +11,6 @@ mod tests {
         test_utils::{VMContextBuilder, accounts},
         testing_env,
     };
-    use omni_transaction::near::utils::PublicKeyStrExt;
     use std::str::FromStr;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
@@ -216,7 +215,8 @@ mod tests {
 
     #[test]
     fn test_add_full_access_key_and_register_with_intents_owner() {
-        let context = get_context(accounts(1));
+        let mut context = get_context(accounts(1));
+        context.attached_deposit(near_sdk::NearToken::from_yoctonear(1));
         testing_env!(context.build());
         let mut contract = AuthProxyContract::new(
             accounts(1),
@@ -230,7 +230,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "You have no power here. Only the owner can perform this action.")]
     fn test_add_full_access_key_and_register_with_intents_non_owner() {
-        let context = get_context(accounts(2));
+        let mut context = get_context(accounts(2));
+        context.attached_deposit(near_sdk::NearToken::from_yoctonear(1));
         testing_env!(context.build());
         let mut contract = AuthProxyContract::new(
             accounts(1),

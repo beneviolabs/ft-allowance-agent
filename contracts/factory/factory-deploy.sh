@@ -52,8 +52,11 @@ echo "Building contract..."
 RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
 
 # Set variables
+# https://nearblocks.io/txns/6iyX1GMA3wGrh2qtz8hKv7ppf1ngV83nKiz8ZKDAE71a
+#near contract deploy-as-global use-file /Users/charles/.nearai/registry/charleslavon.near/ft-allowance/contracts/target/near/proxy_contract.wasm as-global-hash peerfolio.testnet network-config testnet sign-with-keychain send
+GLOBAL_PROXY_CODE_HASH="CxhHoMAytiy39MSyKCJRksiWXvhYdRYncFpcVWAd4Pbg"
 WASM_PATH="target/near/proxy_factory.wasm"
-FACTORY_ACCOUNT="auth-v0.peerfolio.$NETWORK"
+FACTORY_ACCOUNT="auth-v1.peerfolio.$NETWORK"
 FACTORY_OWNER="peerfolio.$NETWORK"
 
 echo "Optimizing WASM..."
@@ -80,7 +83,7 @@ fi
 # Deploy factory
     echo "Deploying factory contract..."
 if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
-    near create-account "$FACTORY_ACCOUNT" --masterAccount "$FACTORY_OWNER" --initialBalance 5
+    near create-account "$FACTORY_ACCOUNT" --masterAccount "$FACTORY_OWNER" --initialBalance 1.5
 
     echo "Waiting 2 seconds for block finality before deploying..."
     sleep 2
@@ -89,7 +92,7 @@ if ! near state "$FACTORY_ACCOUNT" &>/dev/null; then
     "$FACTORY_ACCOUNT" \
     "$WASM_PATH" \
     --initFunction "new" \
-    --initArgs '{"network":"'"$NEAR_ENV"'"}'
+    --initArgs '{"network":"'"$NEAR_ENV"'", "global_proxy_base58_hash":"'"$GLOBAL_PROXY_CODE_HASH"'"}'
  else
     near deploy \
     "$FACTORY_ACCOUNT" \
