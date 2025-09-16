@@ -167,4 +167,6 @@ near call auth-v1.peerfolio.testnet get_proxy_code_hash_hex '{}'
 
 If migrating from traditionally deployed trading account to global contracts:
 
-1. Since you're already "paying" for your contract's code to be stored onchain, you deploy the latest auth proxy wasm onto your trading account. A requisite is that you have added a full access key onto your trading account, then `near contract deploy charleslavon.auth-v0.peerfolio.near use-file /contracts/target/near/proxy_contract.wasm without-init-call network-config mainnet sign-with-plaintext-private-key`
+1. Transfer all assets from your trading account and follow the trading account withdrawal and deletion steps [here](https://docs.google.com/document/d/1runpneX6-h41beHh4k9FKtw3lKz6qgQbNzteR3RSCO4/)
+2. Confirm all assets transferred as expected from the account before you delete it to free up the remaining Near that secures the contract's storage.
+3. Follow the steps in 4.1 above, our use the Peerfolio UI when it supports global contracts, to create the trading account.
