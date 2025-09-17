@@ -99,17 +99,32 @@ impl ProxyFactory {
         }
     }
 
-    fn get_base_account_name(&self, owner_id: &AccountId) -> String {
-        let base_address =
-            if owner_id.as_str().ends_with(".testnet") || owner_id.as_str().ends_with(".near") {
-                // Take everything before .testnet or .near
-                let parts: Vec<&str> = owner_id.as_str().rsplitn(2, '.').collect();
-                parts[1].to_string()
-            } else {
-                owner_id.to_string()
-            };
+    pub fn get_base_account_name(&self, owner_id: &AccountId) -> String {
+        let account_str = owner_id.as_str();
 
-        base_address
+        if account_str.ends_with(".testnet") || account_str.ends_with(".near") {
+            let parts: Vec<&str> = account_str.rsplitn(2, '.').collect();
+            parts[1].to_string()
+        } else if account_str.len() == 64 {
+            // Implicit account: take the first 32 chars
+            let hash_input = &account_str[..32];
+            // hash them to get 18-char result
+            let hash = env::sha256(hash_input.as_bytes());
+            let truncated = hex::encode(&hash[..12]); // 24 chars (12 bytes * 2)
+
+            // with this approach, we would need ~2^36 (68 billion) implicit accounts to have a
+            // 50% chance of collision between base account names.
+            // Even with millions of implicit accounts, collision risk is negligible
+            format!("implicit_{}", truncated)
+        } else {
+            env::panic_str("Unsupported account name format for base account name extraction");
+        }
+    }
+
+    /// Utility method to check if a given implicit base account name corresponds to a specific owner_id
+    pub fn verify_implicit_base_name(&self, owner_id: AccountId, base_name: String) -> bool {
+        let expected_base_name = self.get_base_account_name(&owner_id);
+        expected_base_name == base_name
     }
 
     /// Helper function to decode Base58 code hash string to 32-byte hash
