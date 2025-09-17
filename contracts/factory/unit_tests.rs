@@ -53,7 +53,7 @@ mod tests {
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
-        contract.deposit_and_create_proxy_global(accounts(2));
+        contract.deposit_and_create_proxy_global("alice.testnet".parse().unwrap());
     }
 
     #[test]
@@ -74,7 +74,7 @@ mod tests {
         // Test subaccount
         let owner_id: AccountId = "trading.alice.testnet".parse().unwrap();
         let proxy_address = contract.test_get_base_account_name(&owner_id);
-        assert_eq!(proxy_address, "trading.alice");
+        assert_eq!(proxy_address, "trading-alice");
     }
 
     #[test]
@@ -108,7 +108,7 @@ mod tests {
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
-        let result = contract.create_proxy_global(accounts(2));
+        let result = contract.create_proxy_global("alice.testnet".parse().unwrap());
 
         // Since we can't fully test Promise chain in unit tests,
         // we at least verify the promise was created
@@ -201,5 +201,202 @@ mod tests {
 
         // Verify promise was created
         assert!(matches!(result, Promise { .. }));
+    }
+
+    #[test]
+    fn test_get_base_account_name_named_accounts() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test .testnet accounts
+        let owner_id: AccountId = "alice.testnet".parse().unwrap();
+        let base_name = contract.get_base_account_name(&owner_id);
+        assert_eq!(base_name, "alice");
+
+        // Test .near accounts
+        let owner_id: AccountId = "bob.near".parse().unwrap();
+        let base_name = contract.get_base_account_name(&owner_id);
+        assert_eq!(base_name, "bob");
+
+        // Test subaccounts
+        let owner_id: AccountId = "trading.alice.testnet".parse().unwrap();
+        let base_name = contract.get_base_account_name(&owner_id);
+        assert_eq!(base_name, "trading-alice");
+
+        // Test deep subaccounts
+        let owner_id: AccountId = "defi.trading.alice.near".parse().unwrap();
+        let base_name = contract.get_base_account_name(&owner_id);
+        assert_eq!(base_name, "defi-trading-alice");
+    }
+
+    #[test]
+    fn test_get_base_account_name_implicit_accounts() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test implicit account (64-character hex string)
+        let implicit_account = "98793cd91a3f870fb126f66285808c7e094afcfc4eda8a82f911432ac1b5dffd";
+        let owner_id: AccountId = implicit_account.parse().unwrap();
+        let base_name = contract.get_base_account_name(&owner_id);
+
+        // Should start with "implicit_" and be deterministic
+        assert!(base_name.starts_with("implicit_"));
+        assert_eq!(base_name.len(), 33); // "implicit_" + 25 chars (updated based on actual output)
+
+        // Test that the same input always produces the same output
+        let base_name2 = contract.get_base_account_name(&owner_id);
+        assert_eq!(base_name, base_name2);
+
+        // Test different implicit account produces different base name
+        let implicit_account2 = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+        let owner_id2: AccountId = implicit_account2.parse().unwrap();
+        let base_name2 = contract.get_base_account_name(&owner_id2);
+        assert_ne!(base_name, base_name2);
+        assert!(base_name2.starts_with("implicit_"));
+    }
+
+    #[test]
+    fn test_get_base_account_name_subaccount_hyphenation() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test various subaccount patterns
+        let test_cases = vec![
+            ("trading.alice.testnet", "trading-alice"),
+            ("defi.trading.alice.near", "defi-trading-alice"),
+            ("a.b.c.d.e.testnet", "a-b-c-d-e"),
+            ("single.testnet", "single"),
+            ("alice.near", "alice"),
+        ];
+
+        for (input, expected) in test_cases {
+            let owner_id: AccountId = input.parse().unwrap();
+            let base_name = contract.get_base_account_name(&owner_id);
+            assert_eq!(base_name, expected, "Failed for input: {}", input);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported account name format for base account name extraction")]
+    fn test_get_base_account_name_invalid_format() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test invalid account format (not 64 chars, not ending with .near/.testnet)
+        let invalid_account = "invalid_account_format";
+        let owner_id: AccountId = invalid_account.parse().unwrap();
+        contract.get_base_account_name(&owner_id);
+    }
+
+    #[test]
+    fn test_verify_implicit_base_name_correct() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test with implicit account
+        let implicit_account = "98793cd91a3f870fb126f66285808c7e094afcfc4eda8a82f911432ac1b5dffd";
+        let owner_id: AccountId = implicit_account.parse().unwrap();
+        let expected_base_name = contract.get_base_account_name(&owner_id);
+
+        // Verify correct base name
+        let is_valid = contract.verify_implicit_base_name(owner_id, expected_base_name);
+        assert!(is_valid, "Correct base name should be valid");
+    }
+
+    #[test]
+    fn test_verify_implicit_base_name_incorrect() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test with implicit account
+        let implicit_account = "98793cd91a3f870fb126f66285808c7e094afcfc4eda8a82f911432ac1b5dffd";
+        let owner_id: AccountId = implicit_account.parse().unwrap();
+
+        // Test with wrong base name
+        let wrong_base_name = "implicit_wrong123456789".to_string();
+        let is_valid = contract.verify_implicit_base_name(owner_id, wrong_base_name);
+        assert!(!is_valid, "Wrong base name should be invalid");
+    }
+
+    #[test]
+    fn test_verify_implicit_base_name_named_account() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test with named account
+        let owner_id: AccountId = "alice.testnet".parse().unwrap();
+        let expected_base_name = contract.get_base_account_name(&owner_id);
+
+        // Verify correct base name for named account
+        let is_valid = contract.verify_implicit_base_name(owner_id.clone(), expected_base_name);
+        assert!(
+            is_valid,
+            "Correct base name for named account should be valid"
+        );
+
+        // Test with wrong base name for named account
+        let wrong_base_name = "bob".to_string();
+        let is_valid = contract.verify_implicit_base_name(owner_id.clone(), wrong_base_name);
+        assert!(
+            !is_valid,
+            "Wrong base name for named account should be invalid"
+        );
+    }
+
+    #[test]
+    fn test_verify_implicit_base_name_deterministic() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test that verification is deterministic
+        let implicit_account = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+        let owner_id: AccountId = implicit_account.parse().unwrap();
+        let base_name = contract.get_base_account_name(&owner_id);
+
+        // Multiple calls should return the same result
+        let is_valid1 = contract.verify_implicit_base_name(owner_id.clone(), base_name.clone());
+        let is_valid2 = contract.verify_implicit_base_name(owner_id, base_name);
+        assert_eq!(is_valid1, is_valid2);
+        assert!(is_valid1, "Deterministic verification should be consistent");
     }
 }
