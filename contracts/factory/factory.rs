@@ -117,7 +117,7 @@ impl ProxyFactory {
         } else if account_str.len() == 64 {
             // Implicit account: take the first 32 chars
             let hash_input = &account_str[..32];
-            // hash them to get 18-char result
+            // hash them and encode first 12 bytes as hex to get 24-char result
             let hash = env::sha256(hash_input.as_bytes());
             let truncated = hex::encode(&hash[..12]); // 24 chars (12 bytes * 2)
 
