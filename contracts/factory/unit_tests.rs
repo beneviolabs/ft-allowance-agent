@@ -251,7 +251,7 @@ mod tests {
 
         // Should start with "implicit_" and be deterministic
         assert!(base_name.starts_with("implicit_"));
-        assert_eq!(base_name.len(), 33); // "implicit_" + 25 chars (updated based on actual output)
+        assert_eq!(base_name.len(), 33); // "implicit_" (9 chars) + 24 chars = 33
 
         // Test that the same input always produces the same output
         let base_name2 = contract.get_base_account_name(&owner_id);
