@@ -261,9 +261,8 @@ mod tests {
         );
 
         let json_input = r#"{"deposit":1000000,"other_field":"value"}"#.to_string();
-        let deposits = vec![omni_transaction::near::types::U128(1000000)];
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
         // All deposit values should be converted to strings
         assert_eq!(result, r#"{"deposit":"1000000","other_field":"value"}"#);
@@ -280,11 +279,10 @@ mod tests {
 
         let large_number = 10_000_000_000_000_000_000_000u128; // Larger than MAX_SAFE_INTEGER
         let json_input = format!(r#"{{"deposit":{},"other_field":"value"}}"#, large_number);
-        let deposits = vec![omni_transaction::near::types::U128(large_number)];
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
-        // Large numbers should be converted to strings
+        // Large numbers should be converted to strings (no scientific notation)
         assert_eq!(
             result,
             format!(r#"{{"deposit":"{}","other_field":"value"}}"#, large_number)
@@ -308,15 +306,10 @@ mod tests {
             r#"{{"actions":[{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}}]}}"#,
             large_number1, small_number, large_number2
         );
-        let deposits = vec![
-            omni_transaction::near::types::U128(large_number1),
-            omni_transaction::near::types::U128(small_number),
-            omni_transaction::near::types::U128(large_number2),
-        ];
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
-        // All deposit values should be converted to strings
+        // All deposit values should be converted to strings (no scientific notation)
         let expected = format!(
             r#"{{"actions":[{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}}]}}"#,
             large_number1, small_number, large_number2
@@ -782,14 +775,9 @@ mod tests {
             deposits_values[9]
         );
 
-        let deposits: Vec<_> = deposits_values
-            .iter()
-            .map(|&v| omni_transaction::near::types::U128(v))
-            .collect();
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
-
-        // All deposit values should be converted to strings and maintain their order
+        // All deposit values should be converted to strings (no scientific notation)
         let expected = format!(
             r#"{{"actions":[{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}}]}}"#,
             deposits_values[0],
@@ -817,9 +805,8 @@ mod tests {
 
         let max_safe_integer = 9_007_199_254_740_991u128; // JavaScript's MAX_SAFE_INTEGER
         let json_input = format!(r#"{{"deposit":{}}}"#, max_safe_integer);
-        let deposits = vec![omni_transaction::near::types::U128(max_safe_integer)];
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
         // All deposit values should be converted to strings
         assert_eq!(result, format!(r#"{{"deposit":"{}"}}"#, max_safe_integer));
@@ -836,11 +823,8 @@ mod tests {
 
         let max_safe_integer_plus_one = 9_007_199_254_740_992u128; // MAX_SAFE_INTEGER + 1
         let json_input = format!(r#"{{"deposit":{}}}"#, max_safe_integer_plus_one);
-        let deposits = vec![omni_transaction::near::types::U128(
-            max_safe_integer_plus_one,
-        )];
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
         // All deposit values should be converted to strings
         assert_eq!(
@@ -859,13 +843,12 @@ mod tests {
         );
 
         let json_input = r#"{"other_field":"value","number":123}"#.to_string();
-        let deposits = vec![];
-        let expected = json_input.clone();
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
-        // No changes should be made
-        assert_eq!(result, expected);
+        // No changes should be made (field ordering may differ after JSON parse/serialize)
+        assert!(result.contains(r#""other_field":"value""#));
+        assert!(result.contains(r#""number":123"#));
     }
 
     #[test]
@@ -878,9 +861,8 @@ mod tests {
         );
 
         let json_input = r#"{"deposit":0}"#.to_string();
-        let deposits = vec![omni_transaction::near::types::U128(0)];
 
-        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+        let result = contract.convert_deposits_to_strings(json_input).unwrap();
 
         // Zero should be converted to string
         assert_eq!(result, r#"{"deposit":"0"}"#);
