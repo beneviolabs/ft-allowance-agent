@@ -39,6 +39,7 @@ mod utils;
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
+const NEAR_MPC_DOMAIN_ID: u32 = 0;
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -60,6 +61,17 @@ pub enum ActionString {
     Transfer {
         deposit: String,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SignatureRequest {
+    pub contract_id: AccountId,
+    pub actions_json: String,
+    pub nonce: U64,
+    pub block_hash: Base58CryptoHash,
+    pub mpc_signer_pk: String,
+    pub derivation_path: String,
+    pub domain_id: Option<u32>,
 }
 
 #[ext_contract(ext_self)]
@@ -166,15 +178,7 @@ impl AuthProxyContract {
     // Request a signature from the MPC signer
     #[payable]
     #[handle_result]
-    pub fn request_signature(
-        &mut self,
-        contract_id: AccountId,
-        actions_json: String,
-        nonce: U64,
-        block_hash: Base58CryptoHash,
-        mpc_signer_pk: String,
-        derivation_path: String,
-    ) -> Result<Promise, String> {
+    pub fn request_signature(&mut self, request: SignatureRequest) -> Result<Promise, String> {
         let attached_gas = env::prepaid_gas();
         assert!(
             attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
@@ -193,7 +197,7 @@ impl AuthProxyContract {
         let (gas_for_signing, _total_reserved_gas) = self.calculate_gas_allocation(attached_gas)?;
 
         // Parse actions from JSON string
-        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
+        let actions: Vec<ActionString> = serde_json::from_str(&request.actions_json)
             .map_err(|e| format!("Failed to parse actions JSON: {}", e))?;
 
         // Convert string actions to OmniActions
@@ -220,7 +224,7 @@ impl AuthProxyContract {
                     // Verify action is allowed
                     let near_action = NearAction {
                         method_name: Some(method_name.clone()),
-                        contract_id: contract_id.clone(),
+                        contract_id: request.contract_id.clone(),
                         gas_attached: NearGas::from_gas(gas_u64.0),
                         deposit_attached: deposit_near,
                     };
@@ -262,13 +266,14 @@ impl AuthProxyContract {
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
             .signer_public_key(
-                mpc_signer_pk
+                request
+                    .mpc_signer_pk
                     .to_public_key()
                     .map_err(|e| format!("Invalid public key format: {}", e))?,
             )
-            .nonce(nonce.0) // Use the provided nonce
-            .receiver_id(contract_id.to_string())
-            .block_hash(OmniBlockHash(block_hash.into()))
+            .nonce(request.nonce.0) // Use the provided nonce
+            .receiver_id(request.contract_id.to_string())
+            .block_hash(OmniBlockHash(request.block_hash.into()))
             .actions(omni_actions.clone())
             .build();
 
@@ -282,8 +287,8 @@ impl AuthProxyContract {
             - Number of Actions: {}",
             tx.signer_id,
             tx.receiver_id,
-            derivation_path,
-            mpc_signer_pk,
+            request.derivation_path,
+            request.mpc_signer_pk,
             tx.actions.len()
         ));
 
@@ -309,26 +314,26 @@ impl AuthProxyContract {
 
         near_sdk::env::log_str(&format!(
             "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
-            contract_id,
+            request.contract_id,
             env::current_account_id(),
             omni_actions,
-            nonce.0,
-            block_hash
+            request.nonce.0,
+            request.block_hash
         ));
 
         // SHA-256 hash of the serialized transaction
         let hashed_payload = utils::hash_payload(&tx.build_for_signing());
 
         // Create a signature request for the hashed payload
-        let request = SignRequest {
+        let sign_request = SignRequest {
             payload_v2: EddsaPayload {
                 ecdsa: hex::encode(hashed_payload),
             },
-            path: derivation_path,
-            domain_id: 0, //TODO make this a param so clients can request siggys for addresses on different chains
+            path: request.derivation_path,
+            domain_id: request.domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
         };
 
-        let request_payload = serde_json::json!({ "request": request });
+        let request_payload = serde_json::json!({ "request": sign_request });
 
         // Call MPC requesting a signature for the above txn
         Ok(Promise::new(self.signer_id.clone())

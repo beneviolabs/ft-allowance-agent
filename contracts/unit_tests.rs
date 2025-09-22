@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
-        SignatureResponse,
+        SignatureRequest, SignatureResponse,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -100,14 +100,15 @@ mod tests {
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
-        let _ = contract.request_signature(
-            accounts(3),                                        // contract_id: AccountId
-            "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // actions_json: String
-            U64(1),                                             // nonce: U64
-            Base58CryptoHash::from([0u8; 32]),                  // block_hash: Base58CryptoHash
-            "secp256k1:abcd".to_string(),                       // public_key: String
-            "test_path".to_string(),                            // path: String
-        );
+        let _ = contract.request_signature(SignatureRequest {
+            contract_id: accounts(3),
+            actions_json: "[{\"public_key\": \"ed25519:1234\"}]".to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "secp256k1:abcd".to_string(),
+            derivation_path: "test_path".to_string(),
+            domain_id: None,
+        });
     }
 
     #[test]
@@ -130,14 +131,15 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(
-            accounts(3),                       // contract_id
-            actions_json.to_string(),          // actions_json
-            U64(1),                            // nonce
-            Base58CryptoHash::from([0u8; 32]), // block_hash
-            "secp256k1:abcd".to_string(),      // public_key
-            "ed25519:wxyz".to_string(),        // path
-        );
+        let result = contract.request_signature(SignatureRequest {
+            contract_id: accounts(3),
+            actions_json: actions_json.to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "secp256k1:abcd".to_string(),
+            derivation_path: "ed25519:wxyz".to_string(),
+            domain_id: None,
+        });
 
         // Assert that the function returns an error for invalid action type
         assert!(result.is_err());
@@ -318,6 +320,62 @@ mod tests {
             large_number1, small_number, large_number2
         );
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_request_signature_with_domain_id() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {},
+                "gas": "100000000000000",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        let result = contract.request_signature(SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: actions_json.to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "secp256k1:abcd".to_string(),
+            derivation_path: "ed25519:wxyz".to_string(),
+            domain_id: Some(1),
+        });
+
+        // Test that the domain_id parameter is accepted (doesn't fail with parameter error)
+        // The actual signing will fail due to invalid public key, but that's not what we're testing
+        match result {
+            Ok(_) => {
+                // Test passed - the domain_id parameter was accepted
+            }
+            Err(error_msg) => {
+                // Ensure the error is not related to the domain_id parameter
+                assert!(
+                    !error_msg.contains("domain_id"),
+                    "Error should not be related to domain_id parameter: {}",
+                    error_msg
+                );
+                // The error should be about invalid public key, which is expected
+                assert!(
+                    error_msg.contains("Invalid public key format"),
+                    "Expected public key error, got: {}",
+                    error_msg
+                );
+            }
+        }
     }
 
     #[test]
