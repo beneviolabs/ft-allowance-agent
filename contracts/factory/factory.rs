@@ -1,7 +1,7 @@
 use bs58;
 use near_sdk::serde::Serialize;
 use near_sdk::{
-    env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, env, near,
 };
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
@@ -103,14 +103,9 @@ impl ProxyFactory {
         let account_str = owner_id.as_str();
 
         if account_str.ends_with(".testnet") || account_str.ends_with(".near") {
-            // Extract the account name
-            let domain_start = if account_str.ends_with(".testnet") {
-                account_str.len() - 8 // ".testnet".len()
-            } else {
-                account_str.len() - 5 // ".near".len()
-            };
-
-            let account_part = &account_str[..domain_start];
+            // Take everything before .testnet or .near
+            let parts: Vec<&str> = account_str.rsplitn(2, '.').collect();
+            let account_part = parts[1];
 
             // Replace dots with hyphens for subaccounts
             account_part.replace('.', "-")
