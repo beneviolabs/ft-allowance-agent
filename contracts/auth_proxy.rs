@@ -115,6 +115,23 @@ impl AuthProxyContract {
         );
     }
 
+    /// Returns (gas_for_signing, total_reserved_gas) or an error if insufficient gas
+    fn calculate_gas_allocation(&self, attached_gas: Gas) -> Result<(Gas, Gas), String> {
+        let total_reserved_gas = BASE_GAS.saturating_add(CALLBACK_GAS);
+        let gas_for_signing = attached_gas.saturating_sub(total_reserved_gas);
+
+        if gas_for_signing.as_tgas() < 1 {
+            return Err(format!(
+                "Insufficient gas for signing. Need at least {} TGas total ({} TGas reserved for base + callback). Attached: {} TGas",
+                total_reserved_gas.as_tgas() + 1,
+                total_reserved_gas.as_tgas(),
+                attached_gas.as_tgas()
+            ));
+        }
+
+        Ok((gas_for_signing, total_reserved_gas))
+    }
+
     // Request a signature from the MPC signer
     #[payable]
     #[handle_result]
@@ -141,9 +158,8 @@ impl AuthProxyContract {
             "Unauthorized: only authorized users can request signatures"
         );
 
-        // Calculate remaining gas after base costs
-        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
-        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
+        // Ensure sufficient gas is attached
+        let (gas_for_signing, _total_reserved_gas) = self.calculate_gas_allocation(attached_gas)?;
 
         // Parse actions from JSON string
         let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
