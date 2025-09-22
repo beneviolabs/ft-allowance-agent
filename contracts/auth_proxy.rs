@@ -1,4 +1,4 @@
-use actions::NearAction;
+use actions::{ActionValidationError, NearAction};
 use near_gas::NearGas;
 use near_sdk::base64;
 use near_sdk::collections::UnorderedSet;
@@ -174,7 +174,15 @@ impl AuthProxyContract {
                         gas_attached: NearGas::from_gas(gas_u64.0),
                         deposit_attached: deposit_near,
                     };
-                    NearAction::is_allowed(&near_action);
+                    near_action.is_allowed().unwrap_or_else(|e| {
+                        panic!(
+                            "Action validation failed: {}",
+                            match e {
+                                ActionValidationError::ContractNotAllowed(msg) => msg,
+                                ActionValidationError::MethodNotAllowed(msg) => msg,
+                            }
+                        );
+                    });
 
                     // Convert args to bytes
                     let args_bytes = serde_json::to_vec(&args)
