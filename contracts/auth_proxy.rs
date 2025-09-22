@@ -144,6 +144,76 @@ impl AuthProxyContract {
         Ok((gas_for_signing, total_reserved_gas))
     }
 
+    /// Validate and build OmniActions from ActionString inputs
+    fn validate_and_build_actions(
+        &self,
+        actions: Vec<ActionString>,
+        contract_id: &AccountId,
+    ) -> Result<Vec<OmniAction>, String> {
+        if actions.is_empty() {
+            return Err("Actions cannot be empty. At least one action is required.".to_string());
+        }
+
+        actions
+            .into_iter()
+            .map(|action| match action {
+                ActionString::FunctionCall {
+                    method_name,
+                    args,
+                    gas,
+                    deposit,
+                } => {
+                    let gas_u64 = U64::from(
+                        gas.parse::<u64>()
+                            .map_err(|e| format!("Invalid gas format: {}", e))?,
+                    );
+                    let deposit_near = NearToken::from_yoctonear(
+                        deposit
+                            .parse()
+                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
+                    );
+                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
+
+                    // Verify action is allowed
+                    let near_action = NearAction {
+                        method_name: Some(method_name.clone()),
+                        contract_id: contract_id.clone(),
+                        gas_attached: NearGas::from_gas(gas_u64.0),
+                        deposit_attached: deposit_near,
+                    };
+                    near_action.is_allowed().map_err(|e| match e {
+                        ActionValidationError::ContractNotAllowed(msg) => msg,
+                        ActionValidationError::MethodNotAllowed(msg) => msg,
+                    })?;
+
+                    // Convert args to bytes
+                    let args_bytes = serde_json::to_vec(&args)
+                        .map_err(|e| format!("Failed to serialize args: {}", e))?;
+
+                    Ok(OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
+                        method_name,
+                        args: args_bytes,
+                        gas: OmniU64(gas_u64.into()),
+                        deposit: safe_deposit.0.into(),
+                    })))
+                }
+                ActionString::Transfer { deposit } => {
+                    let deposit_near = NearToken::from_yoctonear(
+                        deposit
+                            .parse()
+                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
+                    );
+                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
+                    Ok(OmniAction::Transfer(
+                        omni_transaction::near::types::TransferAction {
+                            deposit: safe_deposit.0.into(),
+                        },
+                    ))
+                }
+            })
+            .collect()
+    }
+
     /// Convert deposit numbers to strings in JSON
     fn convert_deposits_to_strings(&self, json_string: String, deposits: &[OmniU128]) -> String {
         let mut result = json_string;
@@ -200,67 +270,8 @@ impl AuthProxyContract {
         let actions: Vec<ActionString> = serde_json::from_str(&request.actions_json)
             .map_err(|e| format!("Failed to parse actions JSON: {}", e))?;
 
-        // Convert string actions to OmniActions
-        let omni_actions: Result<Vec<OmniAction>, String> = actions
-            .into_iter()
-            .map(|action| match action {
-                ActionString::FunctionCall {
-                    method_name,
-                    args,
-                    gas,
-                    deposit,
-                } => {
-                    let gas_u64 = U64::from(
-                        gas.parse::<u64>()
-                            .map_err(|e| format!("Invalid gas format: {}", e))?,
-                    );
-                    let deposit_near = NearToken::from_yoctonear(
-                        deposit
-                            .parse()
-                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
-                    );
-                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
-
-                    // Verify action is allowed
-                    let near_action = NearAction {
-                        method_name: Some(method_name.clone()),
-                        contract_id: request.contract_id.clone(),
-                        gas_attached: NearGas::from_gas(gas_u64.0),
-                        deposit_attached: deposit_near,
-                    };
-                    near_action.is_allowed().map_err(|e| match e {
-                        ActionValidationError::ContractNotAllowed(msg) => msg,
-                        ActionValidationError::MethodNotAllowed(msg) => msg,
-                    })?;
-
-                    // Convert args to bytes
-                    let args_bytes = serde_json::to_vec(&args)
-                        .map_err(|e| format!("Failed to serialize args: {}", e))?;
-
-                    Ok(OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
-                        method_name,
-                        args: args_bytes,
-                        gas: OmniU64(gas_u64.into()),
-                        deposit: safe_deposit.0.into(),
-                    })))
-                }
-                ActionString::Transfer { deposit } => {
-                    let deposit_near = NearToken::from_yoctonear(
-                        deposit
-                            .parse()
-                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
-                    );
-                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
-                    Ok(OmniAction::Transfer(
-                        omni_transaction::near::types::TransferAction {
-                            deposit: safe_deposit.0.into(),
-                        },
-                    ))
-                }
-            })
-            .collect();
-
-        let omni_actions = omni_actions?;
+        // Validate and build OmniActions
+        let omni_actions = self.validate_and_build_actions(actions, &request.contract_id)?;
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
