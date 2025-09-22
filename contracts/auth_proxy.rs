@@ -236,34 +236,23 @@ impl AuthProxyContract {
     }
 
     /// Convert deposit numbers to strings in JSON
-    fn convert_deposits_to_strings(&self, json_string: String, deposits: &[OmniU128]) -> String {
-        let mut result = json_string;
+    fn convert_deposits_to_strings(&self, json_string: String) -> Result<String, String> {
+        let mut result = json_string.clone();
 
-        // Sort deposits by value (descending) to avoid partial replacements
-        let mut sorted_deposits: Vec<_> = deposits.iter().collect();
-        sorted_deposits.sort_by(|a, b| b.0.cmp(&a.0));
+        // This regex matches deposit values which are numbers
+        use regex::Regex;
+        let re = Regex::new(r#""deposit"\s*:\s*(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"#)
+            .map_err(|e| format!("Failed to compile regex: {}", e))?;
 
-        for deposit in sorted_deposits {
-            let deposit_value = deposit.0;
+        // Convert the matched deposit value groups into strings
+        result = re
+            .replace_all(&result, |caps: &regex::Captures| {
+                let number_str = &caps[1];
+                format!("\"deposit\":\"{}\"", number_str)
+            })
+            .to_string();
 
-            // Convert all deposit values to strings for consistent JSON handling
-            // Use more specific patterns to avoid false matches
-            let patterns = vec![
-                format!("\"deposit\":{}", deposit_value),
-                format!(",\"deposit\":{}", deposit_value),
-                format!("{{\"deposit\":{}", deposit_value),
-            ];
-
-            for pattern in patterns {
-                let replacement = pattern.replace(
-                    &deposit_value.to_string(),
-                    &format!("\"{}\"", deposit_value),
-                );
-                result = result.replace(&pattern, &replacement);
-            }
-        }
-
-        result
+        Ok(result)
     }
 
     // Request a signature from the MPC signer
@@ -346,7 +335,13 @@ impl AuthProxyContract {
         };
 
         // Convert large deposit numbers to strings for JSON compatibility
-        let modified_tx_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
+        let modified_tx_string = match self.convert_deposits_to_strings(tx_json_string) {
+            Ok(s) => s,
+            Err(e) => {
+                near_sdk::env::log_str(&format!("Failed to convert deposits to strings: {}", e));
+                return Err(format!("Failed to convert deposits to strings: {}", e));
+            }
+        };
         near_sdk::env::log_str(&format!("near tx in json: {}", modified_tx_string));
 
         near_sdk::env::log_str(&format!(

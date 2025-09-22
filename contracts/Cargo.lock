@@ -2200,6 +2200,7 @@ dependencies = [
  "near-workspaces",
  "omni-transaction",
  "once_cell",
+ "regex",
  "schemars",
  "serde",
  "serde_json",
