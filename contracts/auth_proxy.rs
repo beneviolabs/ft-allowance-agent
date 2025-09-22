@@ -196,11 +196,6 @@ impl AuthProxyContract {
         let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
             .map_err(|e| format!("Failed to parse actions JSON: {}", e))?;
 
-        near_sdk::env::log_str(&format!(
-            "Request received - Contract: {}, Actions: {:?}, Nonce: {}, Block Hash: {:?}",
-            contract_id, actions, nonce.0, block_hash
-        ));
-
         // Convert string actions to OmniActions
         let omni_actions: Result<Vec<OmniAction>, String> = actions
             .into_iter()
@@ -398,7 +393,6 @@ impl AuthProxyContract {
             .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
 
         let message_hash = utils::hash_payload(&near_tx.build_for_signing());
-        near_sdk::env::log_str(&format!("Message hash: {}", hex::encode(message_hash)));
 
         // Handle different signature formats
         let omni_signature = match response {
@@ -447,11 +441,6 @@ impl AuthProxyContract {
             }
         };
 
-        near_sdk::env::log_str(&format!(
-            "constructed omni signature: {:?}",
-            &omni_signature
-        ));
-
         // Add signature to transaction
         let near_tx_signed = near_tx.build_with_signature(omni_signature);
 
@@ -465,10 +454,6 @@ impl AuthProxyContract {
     pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
         let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
 
-        env::log_str(&format!("Hash: {}", hex::encode(&hash)));
-        env::log_str(&format!("Signature: {}", hex::encode(&signature)));
-        env::log_str(&format!("V: {}", v));
-
         recovered.map(|key: [u8; 64]| {
             // Add prefix byte for secp256k1 (0x01)
             let mut prefixed_key = vec![0x01];
@@ -476,7 +461,6 @@ impl AuthProxyContract {
 
             let key = format!("secp256k1:{}", bs58::encode(&prefixed_key).into_string());
 
-            env::log_str(&format!("Recovered key: {}", key));
             key
         })
     }
