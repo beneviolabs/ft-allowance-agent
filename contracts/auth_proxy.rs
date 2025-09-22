@@ -456,7 +456,7 @@ impl AuthProxyContract {
         base64_tx
     }
 
-    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
+    fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
         let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
 
         recovered.map(|key: [u8; 64]| {
