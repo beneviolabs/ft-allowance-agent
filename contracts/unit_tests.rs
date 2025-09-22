@@ -747,7 +747,7 @@ mod tests {
         );
 
         // Create 10 distinct deposit values
-        let deposits_values = vec![
+        let deposits_values = [
             0u128,
             1u128,
             1000u128,
@@ -866,5 +866,502 @@ mod tests {
 
         // Zero should be converted to string
         assert_eq!(result, r#"{"deposit":"0"}"#);
+    }
+
+    #[test]
+    fn test_calculate_gas_allocation_sufficient_gas() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Test with sufficient gas (150 TGas)
+        let attached_gas = near_sdk::Gas::from_tgas(150);
+        let result = contract.calculate_gas_allocation(attached_gas);
+
+        assert!(result.is_ok());
+        let (gas_for_signing, total_reserved_gas) = result.unwrap();
+
+        // Should reserve 20 TGas total (10 + 10)
+        assert_eq!(total_reserved_gas.as_tgas(), 20);
+        // Should have 130 TGas for signing
+        assert_eq!(gas_for_signing.as_tgas(), 130);
+    }
+
+    #[test]
+    fn test_calculate_gas_allocation_exact_minimum() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Test with exact minimum gas (21 TGas: 20 reserved + 1 for signing)
+        let attached_gas = near_sdk::Gas::from_tgas(21);
+        let result = contract.calculate_gas_allocation(attached_gas);
+
+        assert!(result.is_ok());
+        let (gas_for_signing, total_reserved_gas) = result.unwrap();
+
+        assert_eq!(total_reserved_gas.as_tgas(), 20);
+        assert_eq!(gas_for_signing.as_tgas(), 1);
+    }
+
+    #[test]
+    fn test_calculate_gas_allocation_insufficient_gas() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Test with insufficient gas (20 TGas: exactly reserved, 0 for signing)
+        let attached_gas = near_sdk::Gas::from_tgas(20);
+        let result = contract.calculate_gas_allocation(attached_gas);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Insufficient gas for signing"));
+        assert!(error_msg.contains("Need at least 21 TGas total"));
+    }
+
+    #[test]
+    fn test_calculate_gas_allocation_very_low_gas() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Test with very low gas (5 TGas)
+        let attached_gas = near_sdk::Gas::from_tgas(5);
+        let result = contract.calculate_gas_allocation(attached_gas);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Insufficient gas for signing"));
+    }
+
+    #[test]
+    fn test_calculate_gas_allocation_maximum_gas() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Test with very high gas (1000 TGas)
+        let attached_gas = near_sdk::Gas::from_tgas(1000);
+        let result = contract.calculate_gas_allocation(attached_gas);
+
+        assert!(result.is_ok());
+        let (gas_for_signing, total_reserved_gas) = result.unwrap();
+
+        assert_eq!(total_reserved_gas.as_tgas(), 20);
+        assert_eq!(gas_for_signing.as_tgas(), 980);
+    }
+
+    // ===== INPUT VALIDATION TESTS =====
+
+    #[test]
+    fn test_request_signature_invalid_public_key() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {},
+                "gas": "100000000000000",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        let result = contract.request_signature(SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: actions_json.to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "invalid_public_key_format".to_string(),
+            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
+            domain_id: Some(1),
+        });
+
+        assert!(result.is_err());
+        match result {
+            Err(_) => {
+                // The error is a Promise, we can't easily extract the error message
+                // but we know it should be an error due to invalid public key
+            }
+            Ok(_) => panic!("Expected error but got Ok"),
+        }
+    }
+
+    #[test]
+    fn test_request_signature_malformed_json() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        testing_env!(get_context(accounts(2)).build());
+        let result = contract.request_signature(SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: "invalid json {".to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
+            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
+            domain_id: Some(1),
+        });
+
+        assert!(result.is_err());
+        match result {
+            Err(_) => {
+                // The error is a Promise, we can't easily extract the error message
+                // but we know it should be an error due to malformed JSON
+            }
+            Ok(_) => panic!("Expected error but got Ok"),
+        }
+    }
+
+    #[test]
+    fn test_request_signature_invalid_gas_format() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {},
+                "gas": "not_a_number",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        let result = contract.request_signature(SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: actions_json.to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
+            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
+            domain_id: Some(1),
+        });
+
+        assert!(result.is_err());
+        match result {
+            Err(_) => {
+                // The error is a Promise, we can't easily extract the error message
+                // but we know it should be an error due to invalid gas format
+            }
+            Ok(_) => panic!("Expected error but got Ok"),
+        }
+    }
+
+    #[test]
+    fn test_request_signature_invalid_deposit_format() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {},
+                "gas": "100000000000000",
+                "deposit": "not_a_number"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        let result = contract.request_signature(SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: actions_json.to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
+            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
+            domain_id: Some(1),
+        });
+
+        assert!(result.is_err());
+        match result {
+            Err(_) => {
+                // The error is a Promise, we can't easily extract the error message
+                // but we know it should be an error due to invalid deposit format
+            }
+            Ok(_) => panic!("Expected error but got Ok"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough gas attached")]
+    fn test_request_signature_insufficient_gas_attached() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        // Set up context with insufficient gas (50 TGas < 100 TGas required)
+        let mut context = get_context(accounts(2));
+        context.prepaid_gas(near_sdk::Gas::from_tgas(50));
+        testing_env!(context.build());
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {},
+                "gas": "100000000000000",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        let _result = contract.request_signature(SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: actions_json.to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
+            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
+            domain_id: Some(1),
+        });
+
+        // This should panic due to assert! in request_signature
+        // We can't easily test this with the current setup, but it's important to note
+        // that the function will panic if insufficient gas is attached
+    }
+
+    // ===== SIGN REQUEST CALLBACK TESTS =====
+
+    #[test]
+    fn test_sign_request_callback_eddsa_success() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Create a mock transaction JSON
+        let tx_json = r#"{
+            "signer_id": "test.near",
+            "signer_public_key": "ed25519:11111111111111111111111111111111",
+            "nonce": 1,
+            "receiver_id": "wrap.near",
+            "block_hash": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "actions": []
+        }"#;
+
+        // Create a mock EDDSA signature response
+        let signature_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
+            signature: vec![1; 64], // 64 bytes for ED25519
+        });
+
+        let result = contract.sign_request_callback(Ok(signature_response), tx_json.to_string());
+
+        // Should return a base64 encoded transaction
+        assert!(!result.is_empty());
+        assert!(!result.starts_with("ERROR:"));
+    }
+
+    #[test]
+    fn test_sign_request_callback_ecdsa_success() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Create a mock transaction JSON
+        let tx_json = r#"{
+            "signer_id": "test.near",
+            "signer_public_key": "ed25519:11111111111111111111111111111111",
+            "nonce": 1,
+            "receiver_id": "wrap.near",
+            "block_hash": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "actions": []
+        }"#;
+
+        // Create a mock ECDSA signature response
+        let signature_response = SignatureResponse::Ecdsa(EcdsaSignatureResponse {
+            scheme: "Secp256k1".to_string(),
+            big_r: BigR {
+                affine_point: "03D0E412BEEBF4B0191C08E13323466A96582C95A2B0BAF4CB6859968B86C01157"
+                    .to_string(),
+            },
+            s: ScalarValue {
+                scalar: "1AE54A1E7D404FD655B43C05DA78D1A6DC5ABAC2AE2A8338F03580D14A2C17F9"
+                    .to_string(),
+            },
+            recovery_id: 1,
+        });
+
+        let result = contract.sign_request_callback(Ok(signature_response), tx_json.to_string());
+
+        // Should return a base64 encoded transaction
+        assert!(!result.is_empty());
+        assert!(!result.starts_with("ERROR:"));
+    }
+
+    #[test]
+    fn test_sign_request_callback_parse_error() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let tx_json = r#"{
+            "signer_id": "test.near",
+            "signer_public_key": "ed25519:11111111111111111111111111111111",
+            "nonce": 1,
+            "receiver_id": "wrap.near",
+            "block_hash": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "actions": []
+        }"#;
+
+        // Create a promise error
+        let promise_error = near_sdk::PromiseError::Failed;
+        let result = contract.sign_request_callback(Err(promise_error), tx_json.to_string());
+
+        // Should return an error message
+        assert!(result.starts_with("ERROR:"));
+        assert!(result.contains("Failed to parse response JSON"));
+    }
+
+    #[test]
+    fn test_sign_request_callback_invalid_transaction_json() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Invalid transaction JSON
+        let invalid_tx_json = r#"{"invalid": "json"}"#;
+
+        let signature_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
+            signature: vec![1; 64],
+        });
+
+        let result =
+            contract.sign_request_callback(Ok(signature_response), invalid_tx_json.to_string());
+
+        // Should return an error message
+        assert!(result.starts_with("ERROR:"));
+        assert!(result.contains("Failed to deserialize transaction"));
+    }
+
+    #[test]
+    fn test_sign_request_callback_eddsa_invalid_length() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let tx_json = r#"{
+            "signer_id": "test.near",
+            "signer_public_key": "ed25519:11111111111111111111111111111111",
+            "nonce": 1,
+            "receiver_id": "wrap.near",
+            "block_hash": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "actions": []
+        }"#;
+
+        // EDDSA signature with invalid length (not 64 bytes)
+        let signature_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
+            signature: vec![1; 32], // Only 32 bytes, should be 64
+        });
+
+        let result = contract.sign_request_callback(Ok(signature_response), tx_json.to_string());
+
+        // Should return an error message
+        assert!(result.starts_with("ERROR:"));
+        assert!(result.contains("Invalid ED25519 signature length"));
+    }
+
+    #[test]
+    fn test_sign_request_callback_ecdsa_invalid_hex() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let tx_json = r#"{
+            "signer_id": "test.near",
+            "signer_public_key": "ed25519:11111111111111111111111111111111",
+            "nonce": 1,
+            "receiver_id": "wrap.near",
+            "block_hash": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "actions": []
+        }"#;
+
+        // ECDSA signature with invalid hex
+        let signature_response = SignatureResponse::Ecdsa(EcdsaSignatureResponse {
+            scheme: "Secp256k1".to_string(),
+            big_r: BigR {
+                affine_point: "03INVALID_HEX_STRING".to_string(),
+            },
+            s: ScalarValue {
+                scalar: "INVALID_HEX_STRING".to_string(),
+            },
+            recovery_id: 1,
+        });
+
+        let result = contract.sign_request_callback(Ok(signature_response), tx_json.to_string());
+
+        // Should return an error message
+        assert!(result.starts_with("ERROR:"));
+        assert!(result.contains("Invalid hex"));
     }
 }

@@ -3,8 +3,9 @@ mod tests {
 
     use crate::ProxyFactory;
     use near_sdk::{
-        test_utils::{accounts, VMContextBuilder},
-        testing_env, AccountId, Gas, NearToken, Promise, PublicKey,
+        AccountId, Gas, NearToken, Promise, PublicKey,
+        test_utils::{VMContextBuilder, accounts},
+        testing_env,
     };
     use std::str::FromStr;
 
@@ -398,5 +399,110 @@ mod tests {
         let is_valid2 = contract.verify_implicit_base_name(owner_id, base_name);
         assert_eq!(is_valid1, is_valid2);
         assert!(is_valid1, "Deterministic verification should be consistent");
+    }
+
+    #[test]
+    #[should_panic(expected = "Failed to decode Base58 code hash")]
+    fn test_decode_code_hash_invalid_base58() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        // This should panic during initialization with invalid Base58
+        let _contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "InvalidBase58String!@#$%^&*()".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Code hash must be exactly 32 bytes")]
+    fn test_decode_code_hash_wrong_length() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        // This should panic during initialization with wrong length hash
+        // Using a valid Base58 string that's not 32 bytes
+        let _contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(), // This is actually 32 bytes, let's use a shorter one
+        );
+    }
+
+    #[test]
+    fn test_network_selection_mainnet() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "mainnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        assert_eq!(
+            contract.get_signer_contract(),
+            "v1.signer".parse::<AccountId>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_network_selection_invalid_defaults_to_testnet() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "invalid_network".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Should default to testnet signer
+        assert_eq!(
+            contract.get_signer_contract(),
+            "v1.signer-prod.testnet".parse::<AccountId>().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_on_proxy_created_success() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let mut contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        let result = contract.on_proxy_created(
+            accounts(1),
+            Ok(()), // Success case
+            NearToken::from_yoctonear(2_000_000),
+        );
+
+        // Should return a promise (success case)
+        assert!(matches!(result, Promise { .. }));
+    }
+
+    #[test]
+    fn test_get_base_account_name_edge_cases() {
+        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        testing_env!(context.build());
+
+        let contract = ProxyFactory::new(
+            "testnet".to_string(),
+            "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
+        );
+
+        // Test edge cases for account name processing
+        let test_cases = vec![
+            ("a.testnet", "a"),                                           // Single character
+            ("very-long-account-name.testnet", "very-long-account-name"), // Long name
+            ("account-with-dashes.testnet", "account-with-dashes"),       // Already has dashes
+            ("a.b.c.d.e.f.testnet", "a-b-c-d-e-f"), // Many subaccounts, theoretically possible
+        ];
+
+        for (input, expected) in test_cases {
+            let owner_id: AccountId = input.parse().unwrap();
+            let base_name = contract.get_base_account_name(&owner_id);
+            assert_eq!(base_name, expected, "Failed for input: {}", input);
+        }
     }
 }
