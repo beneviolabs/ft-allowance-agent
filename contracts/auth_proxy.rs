@@ -132,6 +132,37 @@ impl AuthProxyContract {
         Ok((gas_for_signing, total_reserved_gas))
     }
 
+    /// Convert deposit numbers to strings in JSON
+    fn convert_deposits_to_strings(&self, json_string: String, deposits: &[OmniU128]) -> String {
+        let mut result = json_string;
+
+        // Sort deposits by value (descending) to avoid partial replacements
+        let mut sorted_deposits: Vec<_> = deposits.iter().collect();
+        sorted_deposits.sort_by(|a, b| b.0.cmp(&a.0));
+
+        for deposit in sorted_deposits {
+            let deposit_value = deposit.0;
+
+            // Convert all deposit values to strings for consistent JSON handling
+            // Use more specific patterns to avoid false matches
+            let patterns = vec![
+                format!("\"deposit\":{}", deposit_value),
+                format!(",\"deposit\":{}", deposit_value),
+                format!("{{\"deposit\":{}", deposit_value),
+            ];
+
+            for pattern in patterns {
+                let replacement = pattern.replace(
+                    &deposit_value.to_string(),
+                    &format!("\"{}\"", deposit_value),
+                );
+                result = result.replace(&pattern, &replacement);
+            }
+        }
+
+        result
+    }
+
     // Request a signature from the MPC signer
     #[payable]
     #[handle_result]
@@ -274,18 +305,12 @@ impl AuthProxyContract {
         near_sdk::env::log_str(&format!("Action deposits: {:?}", deposits));
 
         // Serialize transaction into a string to pass into callback
-        let mut tx_json_string = serde_json::to_string(&tx)
+        let tx_json_string = serde_json::to_string(&tx)
             .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
 
-        // Convert any large deposit numbers to strings in the JSON
-        let modified_tx_string = deposits.iter().fold(tx_json_string, |acc, deposit| {
-            acc.replace(
-                &format!("\"deposit\":{}", deposit.0),
-                &format!("\"deposit\":\"{}\"", deposit.0),
-            )
-        });
-        tx_json_string = modified_tx_string;
-        near_sdk::env::log_str(&format!("near tx in json: {}", tx_json_string));
+        // Convert large deposit numbers to strings for JSON compatibility
+        let modified_tx_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
+        near_sdk::env::log_str(&format!("near tx in json: {}", modified_tx_string));
 
         near_sdk::env::log_str(&format!(
             "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
@@ -321,7 +346,7 @@ impl AuthProxyContract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(CALLBACK_GAS)
-                    .sign_request_callback(tx_json_string),
+                    .sign_request_callback(modified_tx_string),
             ))
     }
 

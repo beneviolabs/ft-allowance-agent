@@ -246,4 +246,219 @@ mod tests {
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
         contract.add_full_access_key_and_register_with_intents(pk);
     }
+
+    #[test]
+    fn test_convert_deposits_to_strings_small_numbers() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let json_input = r#"{"deposit":1000000,"other_field":"value"}"#.to_string();
+        let deposits = vec![omni_transaction::near::types::U128(1000000)];
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // All deposit values should be converted to strings
+        assert_eq!(result, r#"{"deposit":"1000000","other_field":"value"}"#);
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_large_numbers() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let large_number = 10_000_000_000_000_000_000_000u128; // Larger than MAX_SAFE_INTEGER
+        let json_input = format!(r#"{{"deposit":{},"other_field":"value"}}"#, large_number);
+        let deposits = vec![omni_transaction::near::types::U128(large_number)];
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // Large numbers should be converted to strings
+        assert_eq!(
+            result,
+            format!(r#"{{"deposit":"{}","other_field":"value"}}"#, large_number)
+        );
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_multiple_deposits() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let large_number1 = 10_000_000_000_000_000_000_000u128;
+        let large_number2 = 20_000_000_000_000_000_000_000u128;
+        let small_number = 1000000u128;
+
+        let json_input = format!(
+            r#"{{"actions":[{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}}]}}"#,
+            large_number1, small_number, large_number2
+        );
+        let deposits = vec![
+            omni_transaction::near::types::U128(large_number1),
+            omni_transaction::near::types::U128(small_number),
+            omni_transaction::near::types::U128(large_number2),
+        ];
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // All deposit values should be converted to strings
+        let expected = format!(
+            r#"{{"actions":[{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}}]}}"#,
+            large_number1, small_number, large_number2
+        );
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_ten_distinct_values() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Create 10 distinct deposit values
+        let deposits_values = vec![
+            0u128,
+            1u128,
+            1000u128,
+            1000000u128,
+            1000000000u128,
+            1000000000000u128,
+            1000000000000000u128,
+            1000000000000000000u128,
+            1000000000000000000000u128,
+            1000000000000000000000000u128,
+        ];
+
+        // Create JSON with all deposit values
+        let json_input = format!(
+            r#"{{"actions":[{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}}]}}"#,
+            deposits_values[0],
+            deposits_values[1],
+            deposits_values[2],
+            deposits_values[3],
+            deposits_values[4],
+            deposits_values[5],
+            deposits_values[6],
+            deposits_values[7],
+            deposits_values[8],
+            deposits_values[9]
+        );
+
+        let deposits: Vec<_> = deposits_values
+            .iter()
+            .map(|&v| omni_transaction::near::types::U128(v))
+            .collect();
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // All deposit values should be converted to strings and maintain their order
+        let expected = format!(
+            r#"{{"actions":[{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}}]}}"#,
+            deposits_values[0],
+            deposits_values[1],
+            deposits_values[2],
+            deposits_values[3],
+            deposits_values[4],
+            deposits_values[5],
+            deposits_values[6],
+            deposits_values[7],
+            deposits_values[8],
+            deposits_values[9]
+        );
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_edge_case_max_safe_integer() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let max_safe_integer = 9_007_199_254_740_991u128; // JavaScript's MAX_SAFE_INTEGER
+        let json_input = format!(r#"{{"deposit":{}}}"#, max_safe_integer);
+        let deposits = vec![omni_transaction::near::types::U128(max_safe_integer)];
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // All deposit values should be converted to strings
+        assert_eq!(result, format!(r#"{{"deposit":"{}"}}"#, max_safe_integer));
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_edge_case_max_safe_integer_plus_one() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let max_safe_integer_plus_one = 9_007_199_254_740_992u128; // MAX_SAFE_INTEGER + 1
+        let json_input = format!(r#"{{"deposit":{}}}"#, max_safe_integer_plus_one);
+        let deposits = vec![omni_transaction::near::types::U128(
+            max_safe_integer_plus_one,
+        )];
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // All deposit values should be converted to strings
+        assert_eq!(
+            result,
+            format!(r#"{{"deposit":"{}"}}"#, max_safe_integer_plus_one)
+        );
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_no_deposits() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let json_input = r#"{"other_field":"value","number":123}"#.to_string();
+        let deposits = vec![];
+        let expected = json_input.clone();
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // No changes should be made
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_zero_deposit() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let json_input = r#"{"deposit":0}"#.to_string();
+        let deposits = vec![omni_transaction::near::types::U128(0)];
+
+        let result = contract.convert_deposits_to_strings(json_input, &deposits);
+
+        // Zero should be converted to string
+        assert_eq!(result, r#"{"deposit":"0"}"#);
+    }
 }
