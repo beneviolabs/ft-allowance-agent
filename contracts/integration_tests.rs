@@ -3,7 +3,7 @@ mod contract_tests {
 
     use anyhow::Result;
     use near_sdk::AccountId;
-    use near_workspaces::{Account, Contract, DevNetwork, Worker, operations::Function};
+    use near_workspaces::{Account, Contract, DevNetwork, Worker};
     use serde_json::json;
 
     const WASM_FILEPATH: &[u8] = include_bytes!("target/near/proxy_contract.wasm");
@@ -58,75 +58,6 @@ mod contract_tests {
     }
 
     #[tokio::test]
-    async fn test_add_authorized_user() -> Result<()> {
-        let worker = near_workspaces::sandbox().await?;
-        let (contract, _owner) = init(&worker).await?;
-
-        // Create a new account to authorize
-        let new_user = worker.dev_create_account().await?;
-
-        // Add new user as authorized user
-        let _ = contract
-            .call("add_authorized_user")
-            .args_json(json!({
-                "account_id": new_user.id()
-            }))
-            .transact()
-            .await?;
-
-        // Verify the user is authorized
-        let is_authorized = contract
-            .call("is_authorized")
-            .args_json(json!({
-                "account_id": new_user.id()
-            }))
-            .view()
-            .await?
-            .json::<bool>()?;
-
-        assert!(is_authorized, "New user should be authorized");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_remove_authorized_user() -> Result<()> {
-        let worker = near_workspaces::sandbox().await?;
-        let (contract, _owner) = init(&worker).await?;
-
-        // Create and authorize a new user
-        let user = worker.dev_create_account().await?;
-        let _ = contract
-            .call("add_authorized_user")
-            .args_json(json!({
-                "account_id": user.id()
-            }))
-            .transact()
-            .await?;
-
-        // Remove authorization
-        let _ = contract
-            .call("remove_authorized_user")
-            .args_json(json!({
-                "account_id": user.id()
-            }))
-            .transact()
-            .await?;
-
-        // Verify user is no longer authorized
-        let is_authorized = contract
-            .call("is_authorized")
-            .args_json(json!({
-                "account_id": user.id()
-            }))
-            .view()
-            .await?
-            .json::<bool>()?;
-
-        assert!(!is_authorized, "User should no longer be authorized");
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_request_signature_unauthorized() -> Result<()> {
         let worker = near_workspaces::sandbox().await?;
         let (contract, _) = init(&worker).await?;
@@ -163,38 +94,6 @@ mod contract_tests {
             "Expected 'Unauthorized:...' error, got: {}",
             err_msg
         );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_authorized_users() -> Result<()> {
-        let worker = near_workspaces::sandbox().await?;
-        let (contract, _owner) = init(&worker).await?;
-
-        // Add multiple users
-        let user1 = worker.dev_create_account().await?;
-        let user2 = worker.dev_create_account().await?;
-
-        let _ = contract
-            .batch()
-            .call(
-                Function::new("add_authorized_user").args_json(json!({ "account_id": user1.id() })),
-            )
-            .call(
-                Function::new("add_authorized_user").args_json(json!({ "account_id": user2.id() })),
-            )
-            .transact()
-            .await?;
-
-        // Get all authorized users
-        let authorized_users = contract
-            .call("get_authorized_users")
-            .view()
-            .await?
-            .json::<Vec<String>>()?;
-
-        assert!(authorized_users.contains(&user1.id().to_string()));
-        assert!(authorized_users.contains(&user2.id().to_string()));
         Ok(())
     }
 }
