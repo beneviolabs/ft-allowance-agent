@@ -117,6 +117,7 @@ impl AuthProxyContract {
 
     // Request a signature from the MPC signer
     #[payable]
+    #[handle_result]
     pub fn request_signature(
         &mut self,
         contract_id: AccountId,
@@ -125,7 +126,7 @@ impl AuthProxyContract {
         block_hash: Base58CryptoHash,
         mpc_signer_pk: String,
         derivation_path: String,
-    ) -> Promise {
+    ) -> Result<Promise, String> {
         let attached_gas = env::prepaid_gas();
         assert!(
             attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
@@ -146,7 +147,7 @@ impl AuthProxyContract {
 
         // Parse actions from JSON string
         let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
-            .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
+            .map_err(|e| format!("Failed to parse actions JSON: {}", e))?;
 
         near_sdk::env::log_str(&format!(
             "Request received - Contract: {}, Actions: {:?}, Nonce: {}, Block Hash: {:?}",
@@ -154,7 +155,7 @@ impl AuthProxyContract {
         ));
 
         // Convert string actions to OmniActions
-        let omni_actions: Vec<OmniAction> = actions
+        let omni_actions: Result<Vec<OmniAction>, String> = actions
             .into_iter()
             .map(|action| match action {
                 ActionString::FunctionCall {
@@ -163,8 +164,15 @@ impl AuthProxyContract {
                     gas,
                     deposit,
                 } => {
-                    let gas_u64 = U64::from(gas.parse::<u64>().unwrap());
-                    let deposit_near = NearToken::from_yoctonear(deposit.parse().unwrap());
+                    let gas_u64 = U64::from(
+                        gas.parse::<u64>()
+                            .map_err(|e| format!("Invalid gas format: {}", e))?,
+                    );
+                    let deposit_near = NearToken::from_yoctonear(
+                        deposit
+                            .parse()
+                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
+                    );
                     let safe_deposit = SafeU128(deposit_near.as_yoctonear());
 
                     // Verify action is allowed
@@ -174,41 +182,48 @@ impl AuthProxyContract {
                         gas_attached: NearGas::from_gas(gas_u64.0),
                         deposit_attached: deposit_near,
                     };
-                    near_action.is_allowed().unwrap_or_else(|e| {
-                        panic!(
-                            "Action validation failed: {}",
-                            match e {
-                                ActionValidationError::ContractNotAllowed(msg) => msg,
-                                ActionValidationError::MethodNotAllowed(msg) => msg,
-                            }
-                        );
-                    });
+                    near_action.is_allowed().map_err(|e| match e {
+                        ActionValidationError::ContractNotAllowed(msg) => msg,
+                        ActionValidationError::MethodNotAllowed(msg) => msg,
+                    })?;
 
                     // Convert args to bytes
                     let args_bytes = serde_json::to_vec(&args)
-                        .unwrap_or_else(|e| panic!("Failed to serialize args: {:?}", e));
+                        .map_err(|e| format!("Failed to serialize args: {}", e))?;
 
-                    OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
+                    Ok(OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
                         method_name,
                         args: args_bytes,
                         gas: OmniU64(gas_u64.into()),
                         deposit: safe_deposit.0.into(),
-                    }))
+                    })))
                 }
                 ActionString::Transfer { deposit } => {
-                    let deposit_near = NearToken::from_yoctonear(deposit.parse().unwrap());
+                    let deposit_near = NearToken::from_yoctonear(
+                        deposit
+                            .parse()
+                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
+                    );
                     let safe_deposit = SafeU128(deposit_near.as_yoctonear());
-                    OmniAction::Transfer(omni_transaction::near::types::TransferAction {
-                        deposit: safe_deposit.0.into(),
-                    })
+                    Ok(OmniAction::Transfer(
+                        omni_transaction::near::types::TransferAction {
+                            deposit: safe_deposit.0.into(),
+                        },
+                    ))
                 }
             })
             .collect();
 
+        let omni_actions = omni_actions?;
+
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(mpc_signer_pk.to_public_key().unwrap())
+            .signer_public_key(
+                mpc_signer_pk
+                    .to_public_key()
+                    .map_err(|e| format!("Invalid public key format: {}", e))?,
+            )
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
@@ -280,7 +295,7 @@ impl AuthProxyContract {
         let request_payload = serde_json::json!({ "request": request });
 
         // Call MPC requesting a signature for the above txn
-        Promise::new(self.signer_id.clone())
+        Ok(Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
                 near_sdk::serde_json::to_vec(&request_payload).unwrap(),
@@ -291,7 +306,7 @@ impl AuthProxyContract {
                 Self::ext(env::current_account_id())
                     .with_static_gas(CALLBACK_GAS)
                     .sign_request_callback(tx_json_string),
-            )
+            ))
     }
 
     pub fn add_full_access_key(&mut self, public_key: PublicKey) -> Promise {

@@ -100,7 +100,7 @@ mod tests {
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
-        contract.request_signature(
+        let _ = contract.request_signature(
             accounts(3),                                        // contract_id: AccountId
             "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // actions_json: String
             U64(1),                                             // nonce: U64
@@ -111,9 +111,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "unknown variant `Sign Message`, expected `FunctionCall` or `Transfer`"
-    )]
     fn test_disallowed_action() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
@@ -133,7 +130,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let result = contract.request_signature(
             accounts(3),                       // contract_id
             actions_json.to_string(),          // actions_json
             U64(1),                            // nonce
@@ -141,6 +138,15 @@ mod tests {
             "secp256k1:abcd".to_string(),      // public_key
             "ed25519:wxyz".to_string(),        // path
         );
+
+        // Assert that the function returns an error for invalid action type
+        assert!(result.is_err());
+        match result {
+            Err(error_msg) => {
+                assert!(error_msg.contains("unknown variant `Sign Message`"));
+            }
+            Ok(_) => panic!("Expected error but got Ok"),
+        }
     }
 
     #[test]
