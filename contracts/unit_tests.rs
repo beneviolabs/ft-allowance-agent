@@ -623,7 +623,7 @@ mod tests {
             request_obj.get("path").unwrap().as_str().unwrap(),
             "test.trading-account.near"
         );
-        assert_eq!(request_obj.get("domain_id").unwrap().as_u64().unwrap(), 1);
+        assert_eq!(request_obj.get("domain_id").unwrap(), 1);
     }
 
     #[test]
@@ -733,7 +733,7 @@ mod tests {
 
         // Verify Ecdsa field is a hex string
         let ecdsa = payload_v2.get("Ecdsa").unwrap().as_str().unwrap();
-        assert!(ecdsa.len() > 0);
+        assert!(!ecdsa.is_empty());
         assert!(ecdsa.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
