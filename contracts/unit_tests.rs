@@ -11,6 +11,8 @@ mod tests {
         test_utils::{VMContextBuilder, accounts},
         testing_env,
     };
+    use omni_transaction::TxBuilder;
+    use omni_transaction::near::utils::PublicKeyStrExt;
     use std::str::FromStr;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
@@ -571,6 +573,175 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err();
         assert!(error_msg.contains("Actions cannot be empty"));
+    }
+
+    #[test]
+    fn test_create_signature_request_with_domain_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let request = SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: "[]".to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk:
+                "ed25519:1234567890123456789012345678901234567890123456789012345678901234"
+                    .to_string(),
+            derivation_path: "test.trading-account.near".to_string(),
+            domain_id: Some(1),
+        };
+
+        let result = contract.create_signature_request(
+            &tx,
+            request.derivation_path.clone(),
+            request.domain_id,
+        );
+
+        // Verify the result is valid JSON
+        assert!(result.is_object());
+
+        // Verify the structure contains the expected fields
+        let request_obj = result.get("request").unwrap();
+        assert!(request_obj.get("payload_v2").is_some());
+        assert!(request_obj.get("path").is_some());
+        assert!(request_obj.get("domain_id").is_some());
+
+        // Verify specific values
+        assert_eq!(
+            request_obj.get("path").unwrap().as_str().unwrap(),
+            "test.trading-account.near"
+        );
+        assert_eq!(request_obj.get("domain_id").unwrap().as_u64().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_create_signature_request_without_domain_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let request = SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: "[]".to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk:
+                "ed25519:1234567890123456789012345678901234567890123456789012345678901234"
+                    .to_string(),
+            derivation_path: "test.trading-account.near".to_string(),
+            domain_id: None,
+        };
+
+        let result = contract.create_signature_request(
+            &tx,
+            request.derivation_path.clone(),
+            request.domain_id,
+        );
+
+        // Verify the result is valid JSON
+        assert!(result.is_object());
+
+        // Verify the structure contains the expected fields
+        let request_obj = result.get("request").unwrap();
+        assert!(request_obj.get("payload_v2").is_some());
+        assert!(request_obj.get("path").is_some());
+        assert!(request_obj.get("domain_id").is_some());
+
+        // Verify specific values
+        assert_eq!(
+            request_obj.get("path").unwrap().as_str().unwrap(),
+            "test.trading-account.near"
+        );
+        assert_eq!(request_obj.get("domain_id").unwrap().as_u64().unwrap(), 0); // Should default to NEAR_MPC_DOMAIN_ID
+    }
+
+    #[test]
+    fn test_create_signature_request_payload_structure() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let request = SignatureRequest {
+            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json: "[]".to_string(),
+            nonce: U64(1),
+            block_hash: Base58CryptoHash::from([0u8; 32]),
+            mpc_signer_pk:
+                "ed25519:1234567890123456789012345678901234567890123456789012345678901234"
+                    .to_string(),
+            derivation_path: "test.trading-account.near".to_string(),
+            domain_id: Some(1),
+        };
+
+        let result = contract.create_signature_request(
+            &tx,
+            request.derivation_path.clone(),
+            request.domain_id,
+        );
+
+        // Verify the payload_v2 structure
+        let request_obj = result.get("request").unwrap();
+        let payload_v2 = request_obj.get("payload_v2").unwrap();
+
+        assert!(payload_v2.get("Ecdsa").is_some());
+
+        // Verify Ecdsa field is a hex string
+        let ecdsa = payload_v2.get("Ecdsa").unwrap().as_str().unwrap();
+        assert!(ecdsa.len() > 0);
+        assert!(ecdsa.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]

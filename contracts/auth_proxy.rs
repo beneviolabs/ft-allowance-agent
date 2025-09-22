@@ -214,6 +214,26 @@ impl AuthProxyContract {
             .collect()
     }
 
+    /// Create signature request from transaction and required parameters
+    fn create_signature_request(
+        &self,
+        tx: &omni_transaction::near::NearTransaction,
+        derivation_path: String,
+        domain_id: Option<u32>,
+    ) -> serde_json::Value {
+        let hashed_payload = utils::hash_payload(&tx.build_for_signing());
+
+        let sign_request = SignRequest {
+            payload_v2: EddsaPayload {
+                ecdsa: hex::encode(hashed_payload),
+            },
+            path: derivation_path,
+            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
+        };
+
+        serde_json::json!({ "request": sign_request })
+    }
+
     /// Convert deposit numbers to strings in JSON
     fn convert_deposits_to_strings(&self, json_string: String, deposits: &[OmniU128]) -> String {
         let mut result = json_string;
@@ -332,19 +352,9 @@ impl AuthProxyContract {
             request.block_hash
         ));
 
-        // SHA-256 hash of the serialized transaction
-        let hashed_payload = utils::hash_payload(&tx.build_for_signing());
-
-        // Create a signature request for the hashed payload
-        let sign_request = SignRequest {
-            payload_v2: EddsaPayload {
-                ecdsa: hex::encode(hashed_payload),
-            },
-            path: request.derivation_path,
-            domain_id: request.domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
-        };
-
-        let request_payload = serde_json::json!({ "request": sign_request });
+        // Create signature request
+        let request_payload =
+            self.create_signature_request(&tx, request.derivation_path.clone(), request.domain_id);
 
         // Call MPC requesting a signature for the above txn
         Ok(Promise::new(self.signer_id.clone())
