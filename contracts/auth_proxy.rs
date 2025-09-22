@@ -76,10 +76,11 @@ pub struct SignatureRequest {
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
-    fn callback_method(
+    fn sign_request_callback(
         &mut self,
         #[callback_result] call_result: Result<SignatureResponse, PromiseError>,
-    );
+        tx_json_string: String,
+    ) -> String;
 }
 
 #[near]
@@ -336,8 +337,13 @@ impl AuthProxyContract {
         near_sdk::env::log_str(&format!("Action deposits: {:?}", deposits));
 
         // Serialize transaction into a string to pass into callback
-        let tx_json_string = serde_json::to_string(&tx)
-            .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
+        let tx_json_string = match serde_json::to_string(&tx) {
+            Ok(s) => s,
+            Err(e) => {
+                near_sdk::env::log_str(&format!("Failed to serialize NearTransaction: {:?}", e));
+                return Err(format!("Failed to serialize NearTransaction: {:?}", e));
+            }
+        };
 
         // Convert large deposit numbers to strings for JSON compatibility
         let modified_tx_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
@@ -356,11 +362,19 @@ impl AuthProxyContract {
         let request_payload =
             self.create_signature_request(&tx, request.derivation_path.clone(), request.domain_id);
 
+        let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                near_sdk::env::log_str(&format!("Failed to serialize request payload: {}", e));
+                return Err(format!("Failed to serialize request payload: {}", e));
+            }
+        };
+
         // Call MPC requesting a signature for the above txn
         Ok(Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                request_payload_bytes,
                 env::attached_deposit(),
                 gas_for_signing,
             )
@@ -387,10 +401,24 @@ impl AuthProxyContract {
             "This method requires an attached deposit of exactly 1 yoctoNear"
         );
         let request_payload = serde_json::json!({ "public_key": public_key });
+        let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                near_sdk::env::log_str(&format!("Failed to serialize request payload: {}", e));
+                // Return a promise that will fail, but don't panic. Avoiding panic blocks a DoS path that would otherwise burn gas.
+                return Promise::new(env::current_account_id()).function_call(
+                    "panic".to_string(),
+                    format!("Failed to serialize request payload: {}", e).into_bytes(),
+                    NearToken::from_yoctonear(0),
+                    Gas::from_tgas(1),
+                );
+            }
+        };
+
         self.add_full_access_key(public_key).then(
             Promise::new(NEAR_INTENTS_ADDRESS.clone()).function_call(
                 "add_public_key".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                request_payload_bytes,
                 env::attached_deposit(),
                 BASE_GAS,
             ),
@@ -410,13 +438,21 @@ impl AuthProxyContract {
             }
             Err(e) => {
                 near_sdk::env::log_str(&format!("Failed to parse JSON: {:?}", e));
-                panic!("Failed to parse response JSON");
+                return "ERROR: Failed to parse response JSON".to_string();
             }
         };
 
         // Deserialize transaction
-        let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
-            .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
+        let near_tx = match serde_json::from_str::<models::NearTransaction>(&tx_json_string) {
+            Ok(tx) => tx,
+            Err(e) => {
+                near_sdk::env::log_str(&format!(
+                    "Failed to deserialize transaction: {} - JSON: {}",
+                    e, tx_json_string
+                ));
+                return "ERROR: Failed to deserialize transaction".to_string();
+            }
+        };
 
         let message_hash = utils::hash_payload(&near_tx.build_for_signing());
 
@@ -424,16 +460,46 @@ impl AuthProxyContract {
         let omni_signature = match response {
             SignatureResponse::Eddsa(eddsa) => {
                 near_sdk::env::log_str("Using ED25519 signature format");
-                Signature::ED25519(ED25519Signature {
-                    r: eddsa.signature[0..32].try_into().unwrap(),
-                    s: eddsa.signature[32..64].try_into().unwrap(),
-                })
+                if eddsa.signature.len() < 64 {
+                    near_sdk::env::log_str(&format!(
+                        "Invalid ED25519 signature length: expected 64, got {}",
+                        eddsa.signature.len()
+                    ));
+                    return "ERROR: Invalid ED25519 signature length".to_string();
+                }
+                let r = match eddsa.signature[0..32].try_into() {
+                    Ok(r) => r,
+                    Err(_) => {
+                        near_sdk::env::log_str("Failed to convert ED25519 r component to array");
+                        return "ERROR: Failed to convert ED25519 r component".to_string();
+                    }
+                };
+                let s = match eddsa.signature[32..64].try_into() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        near_sdk::env::log_str("Failed to convert ED25519 s component to array");
+                        return "ERROR: Failed to convert ED25519 s component".to_string();
+                    }
+                };
+                Signature::ED25519(ED25519Signature { r, s })
             }
             SignatureResponse::Ecdsa(ecdsa) => {
                 near_sdk::env::log_str("Using SECP256K1 signature format");
                 // Convert signature components
-                let r = hex::decode(&ecdsa.big_r.affine_point[2..]).expect("Invalid hex in r");
-                let s = hex::decode(&ecdsa.s.scalar).expect("Invalid hex in s");
+                let r = match hex::decode(&ecdsa.big_r.affine_point[2..]) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        near_sdk::env::log_str(&format!("Invalid hex in r: {}", e));
+                        return "ERROR: Invalid hex in r".to_string();
+                    }
+                };
+                let s = match hex::decode(&ecdsa.s.scalar) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        near_sdk::env::log_str(&format!("Invalid hex in s: {}", e));
+                        return "ERROR: Invalid hex in s".to_string();
+                    }
+                };
                 let v = ecdsa.recovery_id;
 
                 // Combine r and s for verification
@@ -452,7 +518,7 @@ impl AuthProxyContract {
                     }
                     None => {
                         near_sdk::env::log_str("Signature verification failed!");
-                        panic!("Invalid signature: ecrecover failed");
+                        return "ERROR: Invalid signature: ecrecover failed".to_string();
                     }
                 }
 
