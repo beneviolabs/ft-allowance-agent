@@ -18,7 +18,7 @@ use omni_transaction::{
     NEAR,
     near::types::{
         Action as OmniAction, BlockHash as OmniBlockHash,
-        FunctionCallAction as OmniFunctionCallAction, Signature, U64 as OmniU64, U128 as OmniU128,
+        FunctionCallAction as OmniFunctionCallAction, Signature, U64 as OmniU64,
     },
 };
 
@@ -65,11 +65,10 @@ pub enum ActionString {
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
-    fn sign_request_callback(
+    fn callback_method(
         &mut self,
         #[callback_result] call_result: Result<SignatureResponse, PromiseError>,
-        tx_json_string: String,
-    ) -> String;
+    );
 }
 
 #[near]
@@ -117,22 +116,6 @@ impl AuthProxyContract {
         );
     }
 
-    /// Returns (gas_for_signing, total_reserved_gas) or an error if insufficient gas
-    fn calculate_gas_allocation(&self, attached_gas: Gas) -> Result<Gas, String> {
-        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
-        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
-
-        if gas_for_signing.as_tgas() < GAS_FOR_REQUEST_SIGNATURE.as_tgas() {
-            return Err(format!(
-                "Insufficient gas for signing. Need at least {} TGas total. Attached: {} TGas",
-                GAS_FOR_REQUEST_SIGNATURE.as_tgas() + BASE_GAS.as_tgas() + CALLBACK_GAS.as_tgas(),
-                attached_gas.as_tgas()
-            ));
-        }
-
-        Ok(gas_for_signing)
-    }
-
     /// Validate and build OmniActions from ActionString inputs
     fn validate_and_build_actions(
         &self,
@@ -152,14 +135,9 @@ impl AuthProxyContract {
                     gas,
                     deposit,
                 } => {
-                    let gas_u64 = U64::from(
-                        gas.parse::<u64>()
-                            .map_err(|e| format!("Invalid gas format: {}", e))?,
-                    );
+                    let gas_u64 = U64::from(gas.parse::<u64>().map_err(|_| "Invalid gas format")?);
                     let deposit_near = NearToken::from_yoctonear(
-                        deposit
-                            .parse()
-                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
+                        deposit.parse().map_err(|_| "Invalid deposit format")?,
                     );
                     let safe_deposit = SafeU128(deposit_near.as_yoctonear());
 
@@ -188,9 +166,7 @@ impl AuthProxyContract {
                 }
                 ActionString::Transfer { deposit } => {
                     let deposit_near = NearToken::from_yoctonear(
-                        deposit
-                            .parse()
-                            .map_err(|e| format!("Invalid deposit format: {}", e))?,
+                        deposit.parse().map_err(|_| "Invalid deposit format")?,
                     );
                     let safe_deposit = SafeU128(deposit_near.as_yoctonear());
                     Ok(OmniAction::Transfer(
@@ -256,15 +232,27 @@ impl AuthProxyContract {
         derivation_path: String,
         domain_id: Option<u32>,
     ) -> Result<Promise, String> {
-        assert!(
-            self.authorized_users
-                .contains(&env::predecessor_account_id()),
-            "Unauthorized: only authorized users can request signatures"
-        );
-
-        // Ensure sufficient gas is attached
         let attached_gas = env::prepaid_gas();
-        let gas_for_signing = self.calculate_gas_allocation(attached_gas)?;
+        let required_gas =
+            GAS_FOR_REQUEST_SIGNATURE.saturating_add(BASE_GAS.saturating_add(CALLBACK_GAS));
+
+        if attached_gas < required_gas {
+            return Err(format!(
+                "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
+                required_gas.as_tgas(),
+                attached_gas.as_tgas()
+            ));
+        }
+
+        if !self
+            .authorized_users
+            .contains(&env::predecessor_account_id())
+        {
+            return Err("Unauthorized: only authorized users can request signatures".to_string());
+        }
+
+        // reserve gas for the signature request
+        let gas_for_signing = attached_gas.saturating_sub(BASE_GAS.saturating_add(CALLBACK_GAS));
 
         // Parse actions from JSON string
         let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
@@ -302,18 +290,6 @@ impl AuthProxyContract {
             tx.actions.len()
         ));
 
-        // Extract deposit values from omni_actions
-        let deposits: Vec<OmniU128> = omni_actions
-            .iter()
-            .map(|action| match action {
-                OmniAction::FunctionCall(call) => call.deposit.clone(),
-                OmniAction::Transfer(transfer) => transfer.deposit.clone(),
-                _ => OmniU128(0),
-            })
-            .collect();
-
-        near_sdk::env::log_str(&format!("Action deposits: {:?}", deposits));
-
         // Serialize transaction into a string to pass into callback
         let tx_json_string = match serde_json::to_string(&tx) {
             Ok(s) => s,
@@ -331,6 +307,7 @@ impl AuthProxyContract {
                 return Err(format!("Failed to convert deposits to strings: {}", e));
             }
         };
+
         near_sdk::env::log_str(&format!("near tx in json: {}", modified_tx_string));
 
         near_sdk::env::log_str(&format!(
