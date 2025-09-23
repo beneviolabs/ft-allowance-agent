@@ -63,17 +63,6 @@ pub enum ActionString {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SignatureRequest {
-    pub contract_id: AccountId,
-    pub actions_json: String,
-    pub nonce: U64,
-    pub block_hash: Base58CryptoHash,
-    pub mpc_signer_pk: String,
-    pub derivation_path: String,
-    pub domain_id: Option<u32>,
-}
-
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
     fn sign_request_callback(
@@ -129,20 +118,19 @@ impl AuthProxyContract {
     }
 
     /// Returns (gas_for_signing, total_reserved_gas) or an error if insufficient gas
-    fn calculate_gas_allocation(&self, attached_gas: Gas) -> Result<(Gas, Gas), String> {
-        let total_reserved_gas = BASE_GAS.saturating_add(CALLBACK_GAS);
-        let gas_for_signing = attached_gas.saturating_sub(total_reserved_gas);
+    fn calculate_gas_allocation(&self, attached_gas: Gas) -> Result<Gas, String> {
+        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
+        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
 
-        if gas_for_signing.as_tgas() < 1 {
+        if gas_for_signing.as_tgas() < GAS_FOR_REQUEST_SIGNATURE.as_tgas() {
             return Err(format!(
-                "Insufficient gas for signing. Need at least {} TGas total ({} TGas reserved for base + callback). Attached: {} TGas",
-                total_reserved_gas.as_tgas() + 1,
-                total_reserved_gas.as_tgas(),
+                "Insufficient gas for signing. Need at least {} TGas total. Attached: {} TGas",
+                GAS_FOR_REQUEST_SIGNATURE.as_tgas() + BASE_GAS.as_tgas() + CALLBACK_GAS.as_tgas(),
                 attached_gas.as_tgas()
             ));
         }
 
-        Ok((gas_for_signing, total_reserved_gas))
+        Ok(gas_for_signing)
     }
 
     /// Validate and build OmniActions from ActionString inputs
@@ -258,15 +246,16 @@ impl AuthProxyContract {
     // Request a signature from the MPC signer
     #[payable]
     #[handle_result]
-    pub fn request_signature(&mut self, request: SignatureRequest) -> Result<Promise, String> {
-        let attached_gas = env::prepaid_gas();
-        assert!(
-            attached_gas >= GAS_FOR_REQUEST_SIGNATURE,
-            "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
-            GAS_FOR_REQUEST_SIGNATURE.as_tgas(),
-            attached_gas.as_tgas()
-        );
-
+    pub fn request_signature(
+        &mut self,
+        contract_id: AccountId,
+        actions_json: String,
+        nonce: U64,
+        block_hash: Base58CryptoHash,
+        mpc_signer_pk: String,
+        derivation_path: String,
+        domain_id: Option<u32>,
+    ) -> Result<Promise, String> {
         assert!(
             self.authorized_users
                 .contains(&env::predecessor_account_id()),
@@ -274,27 +263,27 @@ impl AuthProxyContract {
         );
 
         // Ensure sufficient gas is attached
-        let (gas_for_signing, _total_reserved_gas) = self.calculate_gas_allocation(attached_gas)?;
+        let attached_gas = env::prepaid_gas();
+        let gas_for_signing = self.calculate_gas_allocation(attached_gas)?;
 
         // Parse actions from JSON string
-        let actions: Vec<ActionString> = serde_json::from_str(&request.actions_json)
+        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
             .map_err(|e| format!("Failed to parse actions JSON: {}", e))?;
 
         // Validate and build OmniActions
-        let omni_actions = self.validate_and_build_actions(actions, &request.contract_id)?;
+        let omni_actions = self.validate_and_build_actions(actions, &contract_id)?;
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
             .signer_public_key(
-                request
-                    .mpc_signer_pk
+                mpc_signer_pk
                     .to_public_key()
                     .map_err(|e| format!("Invalid public key format: {}", e))?,
             )
-            .nonce(request.nonce.0) // Use the provided nonce
-            .receiver_id(request.contract_id.to_string())
-            .block_hash(OmniBlockHash(request.block_hash.into()))
+            .nonce(nonce.0) // Use the provided nonce
+            .receiver_id(contract_id.to_string())
+            .block_hash(OmniBlockHash(block_hash.into()))
             .actions(omni_actions.clone())
             .build();
 
@@ -308,8 +297,8 @@ impl AuthProxyContract {
             - Number of Actions: {}",
             tx.signer_id,
             tx.receiver_id,
-            request.derivation_path,
-            request.mpc_signer_pk,
+            derivation_path,
+            mpc_signer_pk,
             tx.actions.len()
         ));
 
@@ -345,17 +334,18 @@ impl AuthProxyContract {
         near_sdk::env::log_str(&format!("near tx in json: {}", modified_tx_string));
 
         near_sdk::env::log_str(&format!(
-            "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
-            request.contract_id,
+            "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}, gas for signing: {} TGas",
+            contract_id,
             env::current_account_id(),
             omni_actions,
-            request.nonce.0,
-            request.block_hash
+            nonce.0,
+            block_hash,
+            gas_for_signing.as_tgas()
         ));
 
         // Create signature request
         let request_payload =
-            self.create_signature_request(&tx, request.derivation_path.clone(), request.domain_id);
+            self.create_signature_request(&tx, derivation_path.clone(), domain_id);
 
         let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
             Ok(bytes) => bytes,
