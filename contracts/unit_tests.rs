@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         ActionString, AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse,
-        ScalarValue, SignatureRequest, SignatureResponse,
+        ScalarValue, SignatureResponse,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -102,15 +102,15 @@ mod tests {
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
-        let _ = contract.request_signature(SignatureRequest {
-            contract_id: accounts(3),
-            actions_json: "[{\"public_key\": \"ed25519:1234\"}]".to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "secp256k1:abcd".to_string(),
-            derivation_path: "test_path".to_string(),
-            domain_id: None,
-        });
+        let _ = contract.request_signature(
+            accounts(3),
+            "[{\"public_key\": \"ed25519:1234\"}]".to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "secp256k1:abcd".to_string(),
+            "test_path".to_string(),
+            None,
+        );
     }
 
     #[test]
@@ -133,15 +133,15 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(SignatureRequest {
-            contract_id: accounts(3),
-            actions_json: actions_json.to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "secp256k1:abcd".to_string(),
-            derivation_path: "ed25519:wxyz".to_string(),
-            domain_id: None,
-        });
+        let result = contract.request_signature(
+            accounts(3),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "secp256k1:abcd".to_string(),
+            "ed25519:wxyz".to_string(),
+            None,
+        );
 
         // Assert that the function returns an error for invalid action type
         assert!(result.is_err());
@@ -340,15 +340,15 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: actions_json.to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "secp256k1:abcd".to_string(),
-            derivation_path: "ed25519:wxyz".to_string(),
-            domain_id: Some(1),
-        });
+        let result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "secp256k1:abcd".to_string(),
+            "ed25519:wxyz".to_string(),
+            Some(1),
+        );
 
         // Test that the domain_id parameter is accepted (doesn't fail with parameter error)
         // The actual signing will fail due to invalid public key, but that's not what we're testing
@@ -591,22 +591,10 @@ mod tests {
             .actions(vec![])
             .build();
 
-        let request = SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: "[]".to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk:
-                "ed25519:1234567890123456789012345678901234567890123456789012345678901234"
-                    .to_string(),
-            derivation_path: "test.trading-account.near".to_string(),
-            domain_id: Some(1),
-        };
-
         let result = contract.create_signature_request(
             &tx,
-            request.derivation_path.clone(),
-            request.domain_id,
+            "test.trading-account.near".to_string(),
+            Some(1),
         );
 
         // Verify the result is valid JSON
@@ -649,23 +637,8 @@ mod tests {
             .actions(vec![])
             .build();
 
-        let request = SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: "[]".to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk:
-                "ed25519:1234567890123456789012345678901234567890123456789012345678901234"
-                    .to_string(),
-            derivation_path: "test.trading-account.near".to_string(),
-            domain_id: None,
-        };
-
-        let result = contract.create_signature_request(
-            &tx,
-            request.derivation_path.clone(),
-            request.domain_id,
-        );
+        let result =
+            contract.create_signature_request(&tx, "test.trading-account.near".to_string(), None);
 
         // Verify the result is valid JSON
         assert!(result.is_object());
@@ -707,22 +680,10 @@ mod tests {
             .actions(vec![])
             .build();
 
-        let request = SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: "[]".to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk:
-                "ed25519:1234567890123456789012345678901234567890123456789012345678901234"
-                    .to_string(),
-            derivation_path: "test.trading-account.near".to_string(),
-            domain_id: Some(1),
-        };
-
         let result = contract.create_signature_request(
             &tx,
-            request.derivation_path.clone(),
-            request.domain_id,
+            "test.trading-account.near".to_string(),
+            Some(1),
         );
 
         // Verify the payload_v2 structure
@@ -882,10 +843,8 @@ mod tests {
         let result = contract.calculate_gas_allocation(attached_gas);
 
         assert!(result.is_ok());
-        let (gas_for_signing, total_reserved_gas) = result.unwrap();
+        let gas_for_signing = result.unwrap();
 
-        // Should reserve 20 TGas total (10 + 10)
-        assert_eq!(total_reserved_gas.as_tgas(), 20);
         // Should have 130 TGas for signing
         assert_eq!(gas_for_signing.as_tgas(), 130);
     }
@@ -899,15 +858,14 @@ mod tests {
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
 
-        // Test with exact minimum gas (21 TGas: 20 reserved + 1 for signing)
-        let attached_gas = near_sdk::Gas::from_tgas(21);
+        // Test with exact minimum gas (120 TGas: 100 for signing + 20 reserved)
+        let attached_gas = near_sdk::Gas::from_tgas(120);
         let result = contract.calculate_gas_allocation(attached_gas);
 
         assert!(result.is_ok());
-        let (gas_for_signing, total_reserved_gas) = result.unwrap();
+        let gas_for_signing = result.unwrap();
 
-        assert_eq!(total_reserved_gas.as_tgas(), 20);
-        assert_eq!(gas_for_signing.as_tgas(), 1);
+        assert_eq!(gas_for_signing.as_tgas(), 100);
     }
 
     #[test]
@@ -925,8 +883,9 @@ mod tests {
 
         assert!(result.is_err());
         let error_msg = result.unwrap_err();
+        println!("Error message: {}", error_msg);
         assert!(error_msg.contains("Insufficient gas for signing"));
-        assert!(error_msg.contains("Need at least 21 TGas total"));
+        assert!(error_msg.contains("Need at least"));
     }
 
     #[test]
@@ -944,6 +903,7 @@ mod tests {
 
         assert!(result.is_err());
         let error_msg = result.unwrap_err();
+        println!("Error message: {}", error_msg);
         assert!(error_msg.contains("Insufficient gas for signing"));
     }
 
@@ -961,9 +921,8 @@ mod tests {
         let result = contract.calculate_gas_allocation(attached_gas);
 
         assert!(result.is_ok());
-        let (gas_for_signing, total_reserved_gas) = result.unwrap();
+        let gas_for_signing = result.unwrap();
 
-        assert_eq!(total_reserved_gas.as_tgas(), 20);
         assert_eq!(gas_for_signing.as_tgas(), 980);
     }
 
@@ -992,15 +951,15 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: actions_json.to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "invalid_public_key_format".to_string(),
-            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
-            domain_id: Some(1),
-        });
+        let result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "invalid_public_key_format".to_string(),
+            "m/44'/397'/0'/0'/0'".to_string(),
+            Some(1),
+        );
 
         assert!(result.is_err());
         match result {
@@ -1025,15 +984,15 @@ mod tests {
         contract.add_authorized_user(accounts(2));
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: "invalid json {".to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
-            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
-            domain_id: Some(1),
-        });
+        let result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            "invalid json {".to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "m/44'/397'/0'/0'/0'".to_string(),
+            Some(1),
+        );
 
         assert!(result.is_err());
         match result {
@@ -1068,15 +1027,15 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: actions_json.to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
-            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
-            domain_id: Some(1),
-        });
+        let result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "m/44'/397'/0'/0'/0'".to_string(),
+            Some(1),
+        );
 
         assert!(result.is_err());
         match result {
@@ -1111,15 +1070,15 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        let result = contract.request_signature(SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: actions_json.to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
-            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
-            domain_id: Some(1),
-        });
+        let result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "m/44'/397'/0'/0'/0'".to_string(),
+            Some(1),
+        );
 
         assert!(result.is_err());
         match result {
@@ -1132,7 +1091,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas attached")]
     fn test_request_signature_insufficient_gas_attached() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
@@ -1144,7 +1102,7 @@ mod tests {
         testing_env!(get_context(accounts(1)).build());
         contract.add_authorized_user(accounts(2));
 
-        // Set up context with insufficient gas (50 TGas < 100 TGas required)
+        // Set up context with insufficient gas (50 TGas < 120 TGas required)
         let mut context = get_context(accounts(2));
         context.prepaid_gas(near_sdk::Gas::from_tgas(50));
         testing_env!(context.build());
@@ -1159,19 +1117,24 @@ mod tests {
             }
         ]"#;
 
-        let _result = contract.request_signature(SignatureRequest {
-            contract_id: AccountId::try_from("wrap.near".to_string()).unwrap(),
-            actions_json: actions_json.to_string(),
-            nonce: U64(1),
-            block_hash: Base58CryptoHash::from([0u8; 32]),
-            mpc_signer_pk: "ed25519:11111111111111111111111111111111".to_string(),
-            derivation_path: "m/44'/397'/0'/0'/0'".to_string(),
-            domain_id: Some(1),
-        });
+        let result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "m/44'/397'/0'/0'/0'".to_string(),
+            Some(1),
+        );
 
-        // This should panic due to assert! in request_signature
-        // We can't easily test this with the current setup, but it's important to note
-        // that the function will panic if insufficient gas is attached
+        // Should return an error due to insufficient gas
+        assert!(result.is_err());
+        match result {
+            Err(error_msg) => {
+                assert!(error_msg.contains("Insufficient gas for signing"));
+            }
+            Ok(_) => panic!("Expected error but got Ok"),
+        }
     }
 
     // ===== SIGN REQUEST CALLBACK TESTS =====

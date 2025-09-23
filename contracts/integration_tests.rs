@@ -75,7 +75,6 @@ mod contract_tests {
                 "block_hash": "11111111111111111111111111111111",
                 "mpc_signer_pk":"ed25519:asdf".to_string(),
                 "derivation_path": "agent.auth-factory.appaccount.testnet".to_string(),
-
             }))
             .gas(near_workspaces::types::Gas::from_tgas(200))
             .transact()
