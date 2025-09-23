@@ -221,7 +221,6 @@ impl AuthProxyContract {
 
     // Request a signature from the MPC signer
     #[payable]
-    #[handle_result]
     pub fn request_signature(
         &mut self,
         contract_id: AccountId,
@@ -231,13 +230,13 @@ impl AuthProxyContract {
         mpc_signer_pk: String,
         derivation_path: String,
         domain_id: Option<u32>,
-    ) -> Result<Promise, String> {
+    ) -> Promise {
         let attached_gas = env::prepaid_gas();
         let required_gas =
             GAS_FOR_REQUEST_SIGNATURE.saturating_add(BASE_GAS.saturating_add(CALLBACK_GAS));
 
         if attached_gas < required_gas {
-            return Err(format!(
+            env::panic_str(&format!(
                 "Not enough gas attached. Please attach at least {} TGas. Attached: {} TGas",
                 required_gas.as_tgas(),
                 attached_gas.as_tgas()
@@ -248,27 +247,37 @@ impl AuthProxyContract {
             .authorized_users
             .contains(&env::predecessor_account_id())
         {
-            return Err("Unauthorized: only authorized users can request signatures".to_string());
+            env::panic_str("Unauthorized: only authorized users can request signatures");
         }
 
         // reserve gas for the signature request
         let gas_for_signing = attached_gas.saturating_sub(BASE_GAS.saturating_add(CALLBACK_GAS));
 
         // Parse actions from JSON string
-        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
-            .map_err(|e| format!("Failed to parse actions JSON: {}", e))?;
+        let actions: Vec<ActionString> = match serde_json::from_str(&actions_json) {
+            Ok(actions) => actions,
+            Err(e) => {
+                env::panic_str(&format!("Failed to parse actions JSON: {}", e));
+            }
+        };
 
         // Validate and build OmniActions
-        let omni_actions = self.validate_and_build_actions(actions, &contract_id)?;
+        let omni_actions = match self.validate_and_build_actions(actions, &contract_id) {
+            Ok(actions) => actions,
+            Err(e) => {
+                env::panic_str(&e);
+            }
+        };
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(
-                mpc_signer_pk
-                    .to_public_key()
-                    .map_err(|e| format!("Invalid public key format: {}", e))?,
-            )
+            .signer_public_key(match mpc_signer_pk.to_public_key() {
+                Ok(pk) => pk,
+                Err(e) => {
+                    env::panic_str(&format!("Invalid public key format: {}", e));
+                }
+            })
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
@@ -294,8 +303,7 @@ impl AuthProxyContract {
         let tx_json_string = match serde_json::to_string(&tx) {
             Ok(s) => s,
             Err(e) => {
-                near_sdk::env::log_str(&format!("Failed to serialize NearTransaction: {:?}", e));
-                return Err(format!("Failed to serialize NearTransaction: {:?}", e));
+                env::panic_str(&format!("Failed to serialize NearTransaction: {:?}", e));
             }
         };
 
@@ -303,8 +311,7 @@ impl AuthProxyContract {
         let modified_tx_string = match self.convert_deposits_to_strings(tx_json_string) {
             Ok(s) => s,
             Err(e) => {
-                near_sdk::env::log_str(&format!("Failed to convert deposits to strings: {}", e));
-                return Err(format!("Failed to convert deposits to strings: {}", e));
+                env::panic_str(&format!("Failed to convert deposits to strings: {}", e));
             }
         };
 
@@ -327,13 +334,12 @@ impl AuthProxyContract {
         let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
             Ok(bytes) => bytes,
             Err(e) => {
-                near_sdk::env::log_str(&format!("Failed to serialize request payload: {}", e));
-                return Err(format!("Failed to serialize request payload: {}", e));
+                env::panic_str(&format!("Failed to serialize request payload: {}", e));
             }
         };
 
         // Call MPC requesting a signature for the above txn
-        Ok(Promise::new(self.signer_id.clone())
+        Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
                 request_payload_bytes,
@@ -344,7 +350,7 @@ impl AuthProxyContract {
                 Self::ext(env::current_account_id())
                     .with_static_gas(CALLBACK_GAS)
                     .sign_request_callback(modified_tx_string),
-            ))
+            )
     }
 
     pub fn add_full_access_key(&mut self, public_key: PublicKey) -> Promise {
