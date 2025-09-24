@@ -214,6 +214,19 @@ impl AuthProxyContract {
         serde_json::json!({ "request": sign_request })
     }
 
+    /// Convert deposit numbers to strings in JSON
+    fn convert_deposits_to_strings(&self, tx_json_string: String, deposits: &[OmniU128]) -> String {
+        // Interestingly, I was unable to find a way to use regex for a more robust replacement of deposit
+        // numbers to strings without completely blowing up the gas cost such that all requests failed with
+        // Exceeds Prepaid Gas.
+        deposits.iter().fold(tx_json_string, |acc, deposit| {
+            acc.replace(
+                &format!("\"deposit\":{}", deposit.0),
+                &format!("\"deposit\":\"{}\"", deposit.0),
+            )
+        })
+    }
+
     // Request a signature from the MPC signer
     #[payable]
     pub fn request_signature(
@@ -302,14 +315,8 @@ impl AuthProxyContract {
         let mut tx_json_string = serde_json::to_string(&tx)
             .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
 
-        // Convert any large deposit numbers to strings in the JSON
-        let modified_tx_string = deposits.iter().fold(tx_json_string, |acc, deposit| {
-            acc.replace(
-                &format!("\"deposit\":{}", deposit.0),
-                &format!("\"deposit\":\"{}\"", deposit.0),
-            )
-        });
-        tx_json_string = modified_tx_string;
+        // Convert large deposit numbers to strings for JSON compatibility
+        tx_json_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
         near_sdk::env::log_str(&format!("near tx in json: {}", tx_json_string));
 
         near_sdk::env::log_str(&format!(

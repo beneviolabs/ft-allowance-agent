@@ -648,4 +648,83 @@ mod tests {
         );
         assert_eq!(request_obj.get("domain_id").unwrap().as_u64().unwrap(), 0); // Should default to NEAR_MPC_DOMAIN_ID
     }
+
+    #[test]
+    fn test_convert_deposits_to_strings_small_numbers() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let json_input = r#"{"deposit":1000000,"other_field":"value"}"#.to_string();
+
+        let result = contract.convert_deposits_to_strings(
+            json_input,
+            &[omni_transaction::near::types::U128(1000000)],
+        );
+
+        // All deposit values should be converted to strings
+        assert_eq!(result, r#"{"deposit":"1000000","other_field":"value"}"#);
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_large_numbers() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let large_number = 10_000_000_000_000_000_000_000u128; // Larger than MAX_SAFE_INTEGER
+        let json_input = format!(r#"{{"deposit":{},"other_field":"value"}}"#, large_number);
+
+        let result = contract.convert_deposits_to_strings(
+            json_input,
+            &[omni_transaction::near::types::U128(large_number)],
+        );
+
+        // Large numbers should be converted to strings (no scientific notation)
+        assert_eq!(
+            result,
+            format!(r#"{{"deposit":"{}","other_field":"value"}}"#, large_number)
+        );
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_multiple_deposits() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let large_number1 = 10_000_000_000_000_000_000_000u128;
+        let large_number2 = 20_000_000_000_000_000_000_000u128;
+        let small_number = 1000000u128;
+
+        let json_input = format!(
+            r#"{{"actions":[{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}}]}}"#,
+            large_number1, small_number, large_number2
+        );
+
+        let result = contract.convert_deposits_to_strings(
+            json_input,
+            &[
+                omni_transaction::near::types::U128(large_number1),
+                omni_transaction::near::types::U128(small_number),
+                omni_transaction::near::types::U128(large_number2),
+            ],
+        );
+
+        // All deposit values should be converted to strings (no scientific notation)
+        let expected = format!(
+            r#"{{"actions":[{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}}]}}"#,
+            large_number1, small_number, large_number2
+        );
+        assert_eq!(result, expected);
+    }
 }
