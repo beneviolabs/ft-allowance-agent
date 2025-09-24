@@ -11,6 +11,8 @@ mod tests {
         test_utils::{VMContextBuilder, accounts},
         testing_env,
     };
+    use omni_transaction::TxBuilder;
+    use omni_transaction::near::utils::PublicKeyStrExt;
     use std::str::FromStr;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
@@ -107,6 +109,7 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]),                  // block_hash: Base58CryptoHash
             "secp256k1:abcd".to_string(),                       // public_key: String
             "test_path".to_string(),                            // path: String
+            None,                                               // domain_id: Option<u32>
         );
     }
 
@@ -140,6 +143,7 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]), // block_hash
             "secp256k1:abcd".to_string(),      // public_key
             "ed25519:wxyz".to_string(),        // path
+            None,                              // domain_id: Option<u32>
         );
     }
 
@@ -173,6 +177,7 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]),
             "ed25519:11111111111111111111111111111111".to_string(),
             "trading-account.near".to_string(),
+            None, // domain_id: Option<u32>
         );
     }
 
@@ -211,6 +216,7 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]),
             "ed25519:11111111111111111111111111111111".to_string(),
             "trading-account.near".to_string(),
+            None, // domain_id: Option<u32>
         );
         // Test passes  - gas exceeded - but validation succeeds
     }
@@ -249,6 +255,7 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]),
             "ed25519:11111111111111111111111111111111".to_string(),
             "trading-account.near".to_string(),
+            None, // domain_id: Option<u32>
         );
     }
 
@@ -383,16 +390,24 @@ mod tests {
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
 
-        let actions = vec![ActionString::Transfer {
-            deposit: "500000000000000000000000".to_string(),
-        }];
+        let actions = vec![
+            ActionString::Transfer {
+                deposit: "500000000000000000000000".to_string(),
+            },
+            ActionString::FunctionCall {
+                method_name: "ft_transfer_call".to_string(),
+                args: serde_json::json!({"receiver_id": "alice.near", "amount": "1000000000000000000000000"}),
+                gas: "100000000000000".to_string(),
+                deposit: "1000000000000000000000000".to_string(),
+            },
+        ];
 
         let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
         let result = contract.validate_and_build_actions(actions, &contract_id);
 
         assert!(result.is_ok());
         let omni_actions = result.unwrap();
-        assert_eq!(omni_actions.len(), 1);
+        assert_eq!(omni_actions.len(), 2);
     }
 
     #[test]
@@ -543,5 +558,94 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err();
         assert!(error_msg.contains("Actions cannot be empty"));
+    }
+
+    #[test]
+    fn test_create_signature_request_with_domain_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let result = contract.create_signature_request(
+            &tx,
+            "test.trading-account.near".to_string(),
+            Some(1),
+        );
+
+        // Verify the result is valid JSON
+        assert!(result.is_object());
+
+        // Verify the structure contains the expected fields
+        let request_obj = result.get("request").unwrap();
+        assert!(request_obj.get("payload_v2").is_some());
+        assert!(request_obj.get("path").is_some());
+        assert!(request_obj.get("domain_id").is_some());
+
+        // Verify specific values
+        assert_eq!(
+            request_obj.get("path").unwrap().as_str().unwrap(),
+            "test.trading-account.near"
+        );
+        assert_eq!(request_obj.get("domain_id").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_create_signature_request_without_domain_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let result =
+            contract.create_signature_request(&tx, "test.trading-account.near".to_string(), None);
+
+        // Verify the result is valid JSON
+        assert!(result.is_object());
+
+        // Verify the structure contains the expected fields
+        let request_obj = result.get("request").unwrap();
+        assert!(request_obj.get("payload_v2").is_some());
+        assert!(request_obj.get("path").is_some());
+        assert!(request_obj.get("domain_id").is_some());
+
+        // Verify specific values
+        assert_eq!(
+            request_obj.get("path").unwrap().as_str().unwrap(),
+            "test.trading-account.near"
+        );
+        assert_eq!(request_obj.get("domain_id").unwrap().as_u64().unwrap(), 0); // Should default to NEAR_MPC_DOMAIN_ID
     }
 }
