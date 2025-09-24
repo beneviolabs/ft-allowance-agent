@@ -253,10 +253,6 @@ impl AuthProxyContract {
             "Unauthorized: only authorized users can request signatures"
         );
 
-        // Calculate remaining gas after base costs
-        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
-        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
-
         // Parse actions from JSON string
         let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
             .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
@@ -343,6 +339,18 @@ impl AuthProxyContract {
                 env::panic_str(&format!("Failed to serialize request payload: {}", e));
             }
         };
+
+        let used_gas = near_sdk::env::used_gas();
+        let gas_for_signing = attached_gas
+            .saturating_sub(BASE_GAS)
+            .saturating_sub(used_gas)
+            .saturating_sub(CALLBACK_GAS);
+
+        near_sdk::env::log_str(&format!(
+            "Used gas: {}, gas reserved for MPC call: {}",
+            used_gas.as_tgas(),
+            gas_for_signing.as_tgas()
+        ));
 
         // Call MPC requesting a signature for the above txn
         Promise::new(self.signer_id.clone())
