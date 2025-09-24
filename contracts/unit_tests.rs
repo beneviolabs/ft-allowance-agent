@@ -144,6 +144,115 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(
+        expected = "Transfer actions must be accompanied by at least one FunctionCall action"
+    )]
+    fn test_request_signature_single_transfer_action_fails() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "Transfer",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        contract.request_signature(
+            AccountId::try_from("bad-account.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "trading-account.near".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "GasExceeded")]
+    fn test_request_signature_multiple_actions_with_transfer_succeeds() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {"receiver_id": "alice.near", "amount": "1000000000000000000000000"},
+                "gas": "100000000000000",
+                "deposit": "1000000000000000000000000"
+            },
+            {
+                "type": "Transfer",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        let _result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "trading-account.near".to_string(),
+        );
+        // Test passes  - gas exceeded - but validation succeeds
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Transfer actions must be accompanied by at least one FunctionCall action"
+    )]
+    fn test_request_signature_multiple_transfer_actions_without_function_call_fails() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "Transfer",
+                "deposit": "1000000000000000000000000"
+            },
+            {
+                "type": "Transfer",
+                "deposit": "2000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "trading-account.near".to_string(),
+        );
+    }
+
+    #[test]
     fn test_signature_response_serialization() {
         // Test EDDSA signature response
         let eddsa_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
