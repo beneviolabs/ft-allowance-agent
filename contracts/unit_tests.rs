@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
-        SignatureResponse,
+        ActionString, AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse,
+        ScalarValue, SignatureResponse,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -348,5 +348,200 @@ mod tests {
         );
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
         contract.add_full_access_key_and_register_with_intents(pk);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_valid_function_call() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({"receiver_id": "alice.near", "amount": "1000000000000000000000000"}),
+            gas: "100000000000000".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_ok());
+        let omni_actions = result.unwrap();
+        assert_eq!(omni_actions.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_valid_transfer() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::Transfer {
+            deposit: "500000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_ok());
+        let omni_actions = result.unwrap();
+        assert_eq!(omni_actions.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_disallowed_contract() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({}),
+            gas: "100000000000000".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("disallowed.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("is not allowed"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_disallowed_method() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "disallowed_method".to_string(),
+            args: serde_json::json!({}),
+            gas: "100000000000000".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Method disallowed_method is restricted"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_invalid_gas_format() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({}),
+            gas: "invalid_gas".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid gas format"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_invalid_deposit_format() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({}),
+            gas: "100000000000000".to_string(),
+            deposit: "invalid_deposit".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid deposit format"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_multiple_actions() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![
+            ActionString::FunctionCall {
+                method_name: "ft_transfer_call".to_string(),
+                args: serde_json::json!({"receiver_id": "alice.near"}),
+                gas: "100000000000000".to_string(),
+                deposit: "1000000000000000000000000".to_string(),
+            },
+            ActionString::Transfer {
+                deposit: "500000000000000000000000".to_string(),
+            },
+            ActionString::FunctionCall {
+                method_name: "near_deposit".to_string(),
+                args: serde_json::json!({}),
+                gas: "50000000000000".to_string(),
+                deposit: "0".to_string(),
+            },
+        ];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_ok());
+        let omni_actions = result.unwrap();
+        assert_eq!(omni_actions.len(), 3);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_empty_actions() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = AuthProxyContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Actions cannot be empty"));
     }
 }
