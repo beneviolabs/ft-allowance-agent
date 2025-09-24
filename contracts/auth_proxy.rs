@@ -277,7 +277,12 @@ impl AuthProxyContract {
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(mpc_signer_pk.to_public_key().unwrap())
+            .signer_public_key(match mpc_signer_pk.to_public_key() {
+                Ok(pk) => pk,
+                Err(e) => {
+                    env::panic_str(&format!("Invalid MPC public key format: {}", e));
+                }
+            })
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
