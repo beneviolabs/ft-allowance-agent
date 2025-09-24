@@ -231,6 +231,12 @@ impl AuthProxyContract {
         derivation_path: String,
         domain_id: Option<u32>,
     ) -> Promise {
+        let total_gas_start = env::prepaid_gas();
+        near_sdk::env::log_str(&format!(
+            "Starting request_signature with {} TGas",
+            total_gas_start.as_tgas()
+        ));
+
         let attached_gas = env::prepaid_gas();
         let required_gas =
             GAS_FOR_REQUEST_SIGNATURE.saturating_add(BASE_GAS.saturating_add(CALLBACK_GAS));
@@ -250,9 +256,6 @@ impl AuthProxyContract {
             env::panic_str("Unauthorized: only authorized users can request signatures");
         }
 
-        // reserve gas for the signature request
-        let gas_for_signing = attached_gas.saturating_sub(BASE_GAS.saturating_add(CALLBACK_GAS));
-
         // Parse actions from JSON string
         let actions: Vec<ActionString> = match serde_json::from_str(&actions_json) {
             Ok(actions) => actions,
@@ -268,6 +271,12 @@ impl AuthProxyContract {
                 env::panic_str(&e);
             }
         };
+        let gas_after_validation = attached_gas.saturating_sub(env::used_gas());
+
+        near_sdk::env::log_str(&format!(
+            "Gas remaining after validation: {} TGas",
+            gas_after_validation.as_tgas()
+        ));
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
@@ -318,13 +327,12 @@ impl AuthProxyContract {
         near_sdk::env::log_str(&format!("near tx in json: {}", modified_tx_string));
 
         near_sdk::env::log_str(&format!(
-            "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}, gas for signing: {} TGas",
+            "Transaction details - Receiver: {}, Signer: {}, Actions: {:?}, Nonce: {}, BlockHash: {:?}",
             contract_id,
             env::current_account_id(),
             omni_actions,
             nonce.0,
-            block_hash,
-            gas_for_signing.as_tgas()
+            block_hash
         ));
 
         // Create signature request
@@ -339,12 +347,17 @@ impl AuthProxyContract {
         };
 
         // Call MPC requesting a signature for the above txn
+        let total_gas_remaining = total_gas_start.saturating_sub(env::used_gas());
+        near_sdk::env::log_str(&format!(
+            "Gas remaining for signature request: {} TGas",
+            total_gas_remaining.as_tgas()
+        ));
         Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
                 request_payload_bytes,
                 env::attached_deposit(),
-                gas_for_signing,
+                total_gas_remaining,
             )
             .then(
                 Self::ext(env::current_account_id())
