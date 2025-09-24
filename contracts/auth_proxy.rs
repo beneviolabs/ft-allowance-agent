@@ -40,6 +40,7 @@ mod utils;
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
+const NEAR_MPC_DOMAIN_ID: u32 = 0;
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -157,7 +158,7 @@ impl AuthProxyContract {
                     let safe_deposit = SafeU128(deposit_near.as_yoctonear());
                     // Verify action is allowed
                     let near_action = NearAction {
-                        method_name: None,
+                        method_name: Some(method_name.clone()),
                         contract_id: contract_id.clone(),
                         gas_attached: NearGas::from_gas(gas_u64.0),
                         deposit_attached: deposit_near,
@@ -193,6 +194,26 @@ impl AuthProxyContract {
             .collect()
     }
 
+    /// Create signature request from transaction and required parameters
+    fn create_signature_request(
+        &self,
+        tx: &omni_transaction::near::NearTransaction,
+        derivation_path: String,
+        domain_id: Option<u32>,
+    ) -> serde_json::Value {
+        let hashed_payload = utils::hash_payload(&tx.build_for_signing());
+
+        let sign_request = SignRequest {
+            payload_v2: EddsaPayload {
+                ecdsa: hex::encode(hashed_payload),
+            },
+            path: derivation_path,
+            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
+        };
+
+        serde_json::json!({ "request": sign_request })
+    }
+
     // Request a signature from the MPC signer
     #[payable]
     pub fn request_signature(
@@ -203,6 +224,7 @@ impl AuthProxyContract {
         block_hash: Base58CryptoHash,
         mpc_signer_pk: String,
         derivation_path: String,
+        domain_id: Option<u32>,
     ) -> Promise {
         let attached_gas = env::prepaid_gas();
         assert!(
@@ -299,25 +321,22 @@ impl AuthProxyContract {
             block_hash
         ));
 
-        // SHA-256 hash of the serialized transaction
-        let hashed_payload = utils::hash_payload(&tx.build_for_signing());
+        // Create signature request
+        let request_payload =
+            self.create_signature_request(&tx, derivation_path.clone(), domain_id);
 
-        // Create a signature request for the hashed payload
-        let request = SignRequest {
-            payload_v2: EddsaPayload {
-                ecdsa: hex::encode(hashed_payload),
-            },
-            path: derivation_path,
-            domain_id: 0, //TODO make this a param so clients can request siggys for addresses on different chains
+        let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                env::panic_str(&format!("Failed to serialize request payload: {}", e));
+            }
         };
-
-        let request_payload = serde_json::json!({ "request": request });
 
         // Call MPC requesting a signature for the above txn
         Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                request_payload_bytes,
                 env::attached_deposit(),
                 gas_for_signing,
             )
