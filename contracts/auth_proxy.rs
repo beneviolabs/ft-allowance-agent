@@ -44,7 +44,7 @@ const NEAR_MPC_DOMAIN_ID: u32 = 0;
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
-pub struct AuthProxyContract {
+pub struct TradingAccountContract {
     owner_id: AccountId,
     authorized_users: UnorderedSet<AccountId>,
     signer_id: AccountId,
@@ -73,7 +73,7 @@ pub trait ExtSelf {
 }
 
 #[near]
-impl AuthProxyContract {
+impl TradingAccountContract {
     #[init]
     pub fn new(owner_id: AccountId, signer_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");

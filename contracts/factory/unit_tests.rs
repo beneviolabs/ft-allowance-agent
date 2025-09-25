@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::ProxyFactory;
+    use crate::TradingAccountFactory;
     use near_sdk::{
-        test_utils::{accounts, VMContextBuilder},
-        testing_env, AccountId, Gas, NearToken, Promise, PublicKey,
+        AccountId, Gas, NearToken, Promise, PublicKey,
+        test_utils::{VMContextBuilder, accounts},
+        testing_env,
     };
     use std::str::FromStr;
 
@@ -29,7 +30,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -49,7 +50,7 @@ mod tests {
         );
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new(
+        let mut contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -61,7 +62,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -82,7 +83,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "mainnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -104,7 +105,7 @@ mod tests {
         );
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new(
+        let mut contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -120,7 +121,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new(
+        let mut contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -139,7 +140,7 @@ mod tests {
         let context = get_context(accounts(1), accounts(1), None);
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new(
+        let mut contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -158,7 +159,7 @@ mod tests {
         let context = get_context(accounts(2), "factory.testnet".parse().unwrap(), None); // Different account
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new(
+        let mut contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -172,7 +173,7 @@ mod tests {
         let context = get_context(accounts(1), accounts(1), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -191,7 +192,7 @@ mod tests {
         let context = get_context(accounts(1), accounts(1), None);
         testing_env!(context.build());
 
-        let mut contract = ProxyFactory::new(
+        let mut contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -208,7 +209,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -239,7 +240,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -270,7 +271,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -297,7 +298,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -313,7 +314,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -333,7 +334,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -353,7 +354,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
@@ -383,7 +384,7 @@ mod tests {
         let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
-        let contract = ProxyFactory::new(
+        let contract = TradingAccountFactory::new(
             "testnet".to_string(),
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );

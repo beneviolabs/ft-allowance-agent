@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        ActionString, AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse,
-        ScalarValue, SignatureResponse,
+        ActionString, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
+        SignatureResponse, TradingAccountContract,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -27,7 +27,7 @@ mod tests {
     fn test_new() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -38,7 +38,7 @@ mod tests {
     fn test_authorize_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -51,7 +51,7 @@ mod tests {
     fn test_remove_authorized_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer".to_string()).unwrap(),
         );
@@ -68,7 +68,7 @@ mod tests {
     fn test_unauthorized_add_user() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -79,7 +79,7 @@ mod tests {
     fn test_get_authorized_users() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -98,7 +98,7 @@ mod tests {
     fn test_unauthorized_request_signature() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -120,7 +120,7 @@ mod tests {
     fn test_disallowed_action() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -154,7 +154,7 @@ mod tests {
     fn test_request_signature_single_transfer_action_fails() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -186,7 +186,7 @@ mod tests {
     fn test_request_signature_multiple_actions_with_transfer_succeeds() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -228,7 +228,7 @@ mod tests {
     fn test_request_signature_multiple_transfer_actions_without_function_call_fails() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -306,7 +306,7 @@ mod tests {
     fn test_add_full_access_key_owner() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -321,7 +321,7 @@ mod tests {
     fn test_add_full_access_key_non_owner() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -334,7 +334,7 @@ mod tests {
         let mut context = get_context(accounts(1));
         context.attached_deposit(near_sdk::NearToken::from_yoctonear(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -349,7 +349,7 @@ mod tests {
         let mut context = get_context(accounts(2));
         context.attached_deposit(near_sdk::NearToken::from_yoctonear(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -361,7 +361,7 @@ mod tests {
     fn test_validate_and_build_actions_valid_function_call() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
         );
@@ -385,7 +385,7 @@ mod tests {
     fn test_validate_and_build_actions_valid_transfer() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -414,7 +414,7 @@ mod tests {
     fn test_validate_and_build_actions_disallowed_contract() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -438,7 +438,7 @@ mod tests {
     fn test_validate_and_build_actions_disallowed_method() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -462,7 +462,7 @@ mod tests {
     fn test_validate_and_build_actions_invalid_gas_format() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -486,7 +486,7 @@ mod tests {
     fn test_validate_and_build_actions_invalid_deposit_format() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -510,7 +510,7 @@ mod tests {
     fn test_validate_and_build_actions_multiple_actions() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -545,7 +545,7 @@ mod tests {
     fn test_validate_and_build_actions_empty_actions() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
         );
@@ -564,7 +564,7 @@ mod tests {
     fn test_create_signature_request_with_domain_id() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
         );
@@ -610,7 +610,7 @@ mod tests {
     fn test_create_signature_request_without_domain_id() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
         );
@@ -653,7 +653,7 @@ mod tests {
     fn test_convert_deposits_to_strings_small_numbers() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -673,7 +673,7 @@ mod tests {
     fn test_convert_deposits_to_strings_large_numbers() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -697,7 +697,7 @@ mod tests {
     fn test_convert_deposits_to_strings_multiple_deposits() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
