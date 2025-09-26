@@ -25,6 +25,7 @@ use omni_transaction::{
 use once_cell::sync::Lazy;
 static NEAR_INTENTS_ADDRESS: Lazy<AccountId> = Lazy::new(|| "intents.near".parse().unwrap());
 
+use crate::actions::ActionValidationError;
 pub use crate::models::*;
 pub use crate::serializer::SafeU128;
 
@@ -39,10 +40,11 @@ mod utils;
 const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
+const NEAR_MPC_DOMAIN_ID: u32 = 0;
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
-pub struct AuthProxyContract {
+pub struct TradingAccountContract {
     owner_id: AccountId,
     authorized_users: UnorderedSet<AccountId>,
     signer_id: AccountId,
@@ -71,7 +73,7 @@ pub trait ExtSelf {
 }
 
 #[near]
-impl AuthProxyContract {
+impl TradingAccountContract {
     #[init]
     pub fn new(owner_id: AccountId, signer_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Contract is already initialized");
@@ -115,6 +117,116 @@ impl AuthProxyContract {
         );
     }
 
+    /// Validate and build OmniActions from ActionString inputs
+    fn validate_and_build_actions(
+        &self,
+        actions: Vec<ActionString>,
+        contract_id: &AccountId,
+    ) -> Result<Vec<OmniAction>, String> {
+        if actions.is_empty() {
+            return Err("Actions cannot be empty. At least one action is required.".to_string());
+        }
+
+        // Ensure Transfer actions are accompanied by at least one FunctionCall action
+        let has_transfer = actions
+            .iter()
+            .any(|action| matches!(action, ActionString::Transfer { .. }));
+        let has_function_call = actions
+            .iter()
+            .any(|action| matches!(action, ActionString::FunctionCall { .. }));
+
+        if has_transfer && !has_function_call {
+            return Err(
+                "Transfer actions must be accompanied by at least one FunctionCall action"
+                    .to_string(),
+            );
+        }
+
+        actions
+            .into_iter()
+            .map(|action| match action {
+                ActionString::FunctionCall {
+                    method_name,
+                    args,
+                    gas,
+                    deposit,
+                } => {
+                    let gas_u64 = U64::from(gas.parse::<u64>().map_err(|_| "Invalid gas format")?);
+                    let deposit_near = NearToken::from_yoctonear(
+                        deposit.parse().map_err(|_| "Invalid deposit format")?,
+                    );
+                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
+                    // Verify action is allowed
+                    let near_action = NearAction {
+                        method_name: Some(method_name.clone()),
+                        contract_id: contract_id.clone(),
+                        gas_attached: NearGas::from_gas(gas_u64.0),
+                        deposit_attached: deposit_near,
+                    };
+                    near_action.is_allowed().map_err(|e| match e {
+                        ActionValidationError::ContractNotAllowed(msg) => msg,
+                        ActionValidationError::MethodNotAllowed(msg) => msg,
+                    })?;
+
+                    // Convert args to bytes
+                    let args_bytes = serde_json::to_vec(&args)
+                        .map_err(|e| format!("Failed to serialize args: {}", e))?;
+
+                    Ok(OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
+                        method_name,
+                        args: args_bytes,
+                        gas: OmniU64(gas_u64.into()),
+                        deposit: safe_deposit.0.into(),
+                    })))
+                }
+                ActionString::Transfer { deposit } => {
+                    let deposit_near = NearToken::from_yoctonear(
+                        deposit.parse().map_err(|_| "Invalid deposit format")?,
+                    );
+                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
+                    Ok(OmniAction::Transfer(
+                        omni_transaction::near::types::TransferAction {
+                            deposit: safe_deposit.0.into(),
+                        },
+                    ))
+                }
+            })
+            .collect()
+    }
+
+    /// Create signature request from transaction and required parameters
+    fn create_signature_request(
+        &self,
+        tx: &omni_transaction::near::NearTransaction,
+        derivation_path: String,
+        domain_id: Option<u32>,
+    ) -> serde_json::Value {
+        let hashed_payload = utils::hash_payload(&tx.build_for_signing());
+
+        let sign_request = SignRequest {
+            payload_v2: EddsaPayload {
+                ecdsa: hex::encode(hashed_payload),
+            },
+            path: derivation_path,
+            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
+        };
+
+        serde_json::json!({ "request": sign_request })
+    }
+
+    /// Convert deposit numbers to strings in JSON
+    fn convert_deposits_to_strings(&self, tx_json_string: String, deposits: &[OmniU128]) -> String {
+        // Interestingly, I was unable to find a way to use regex for a more robust replacement of deposit
+        // numbers to strings without completely blowing up the gas cost such that all requests failed with
+        // Exceeds Prepaid Gas.
+        deposits.iter().fold(tx_json_string, |acc, deposit| {
+            acc.replace(
+                &format!("\"deposit\":{}", deposit.0),
+                &format!("\"deposit\":\"{}\"", deposit.0),
+            )
+        })
+    }
+
     // Request a signature from the MPC signer
     #[payable]
     pub fn request_signature(
@@ -125,6 +237,7 @@ impl AuthProxyContract {
         block_hash: Base58CryptoHash,
         mpc_signer_pk: String,
         derivation_path: String,
+        domain_id: Option<u32>,
     ) -> Promise {
         let attached_gas = env::prepaid_gas();
         assert!(
@@ -140,10 +253,6 @@ impl AuthProxyContract {
             "Unauthorized: only authorized users can request signatures"
         );
 
-        // Calculate remaining gas after base costs
-        let remaining_gas = attached_gas.saturating_sub(BASE_GAS);
-        let gas_for_signing = remaining_gas.saturating_sub(CALLBACK_GAS);
-
         // Parse actions from JSON string
         let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
             .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
@@ -153,54 +262,23 @@ impl AuthProxyContract {
             contract_id, actions, nonce.0, block_hash
         ));
 
-        // Convert string actions to OmniActions
-        let omni_actions: Vec<OmniAction> = actions
-            .into_iter()
-            .map(|action| match action {
-                ActionString::FunctionCall {
-                    method_name,
-                    args,
-                    gas,
-                    deposit,
-                } => {
-                    let gas_u64 = U64::from(gas.parse::<u64>().unwrap());
-                    let deposit_near = NearToken::from_yoctonear(deposit.parse().unwrap());
-                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
-
-                    // Verify action is allowed
-                    let near_action = NearAction {
-                        method_name: Some(method_name.clone()),
-                        contract_id: contract_id.clone(),
-                        gas_attached: NearGas::from_gas(gas_u64.0),
-                        deposit_attached: deposit_near,
-                    };
-                    NearAction::is_allowed(&near_action);
-
-                    // Convert args to bytes
-                    let args_bytes = serde_json::to_vec(&args)
-                        .unwrap_or_else(|e| panic!("Failed to serialize args: {:?}", e));
-
-                    OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
-                        method_name,
-                        args: args_bytes,
-                        gas: OmniU64(gas_u64.into()),
-                        deposit: safe_deposit.0.into(),
-                    }))
-                }
-                ActionString::Transfer { deposit } => {
-                    let deposit_near = NearToken::from_yoctonear(deposit.parse().unwrap());
-                    let safe_deposit = SafeU128(deposit_near.as_yoctonear());
-                    OmniAction::Transfer(omni_transaction::near::types::TransferAction {
-                        deposit: safe_deposit.0.into(),
-                    })
-                }
-            })
-            .collect();
+        // Validate and build OmniActions
+        let omni_actions = match self.validate_and_build_actions(actions, &contract_id) {
+            Ok(actions) => actions,
+            Err(e) => {
+                env::panic_str(&e);
+            }
+        };
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(mpc_signer_pk.to_public_key().unwrap())
+            .signer_public_key(match mpc_signer_pk.to_public_key() {
+                Ok(pk) => pk,
+                Err(e) => {
+                    env::panic_str(&format!("Invalid MPC public key format: {}", e));
+                }
+            })
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
@@ -238,14 +316,8 @@ impl AuthProxyContract {
         let mut tx_json_string = serde_json::to_string(&tx)
             .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
 
-        // Convert any large deposit numbers to strings in the JSON
-        let modified_tx_string = deposits.iter().fold(tx_json_string, |acc, deposit| {
-            acc.replace(
-                &format!("\"deposit\":{}", deposit.0),
-                &format!("\"deposit\":\"{}\"", deposit.0),
-            )
-        });
-        tx_json_string = modified_tx_string;
+        // Convert large deposit numbers to strings for JSON compatibility
+        tx_json_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
         near_sdk::env::log_str(&format!("near tx in json: {}", tx_json_string));
 
         near_sdk::env::log_str(&format!(
@@ -257,25 +329,34 @@ impl AuthProxyContract {
             block_hash
         ));
 
-        // SHA-256 hash of the serialized transaction
-        let hashed_payload = utils::hash_payload(&tx.build_for_signing());
+        // Create signature request
+        let request_payload =
+            self.create_signature_request(&tx, derivation_path.clone(), domain_id);
 
-        // Create a signature request for the hashed payload
-        let request = SignRequest {
-            payload_v2: EddsaPayload {
-                ecdsa: hex::encode(hashed_payload),
-            },
-            path: derivation_path,
-            domain_id: 0, //TODO make this a param so clients can request siggys for addresses on different chains
+        let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                env::panic_str(&format!("Failed to serialize request payload: {}", e));
+            }
         };
 
-        let request_payload = serde_json::json!({ "request": request });
+        let used_gas = near_sdk::env::used_gas();
+        let gas_for_signing = attached_gas
+            .saturating_sub(BASE_GAS)
+            .saturating_sub(used_gas)
+            .saturating_sub(CALLBACK_GAS);
+
+        near_sdk::env::log_str(&format!(
+            "Used gas: {}, gas reserved for MPC call: {}",
+            used_gas.as_tgas(),
+            gas_for_signing.as_tgas()
+        ));
 
         // Call MPC requesting a signature for the above txn
         Promise::new(self.signer_id.clone())
             .function_call(
                 "sign".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                request_payload_bytes,
                 env::attached_deposit(),
                 gas_for_signing,
             )
@@ -398,7 +479,7 @@ impl AuthProxyContract {
         base64_tx
     }
 
-    pub fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
+    fn test_recover(&self, hash: Vec<u8>, signature: Vec<u8>, v: u8) -> Option<String> {
         let recovered: Option<[u8; 64]> = env::ecrecover(&hash, &signature, v, true);
 
         env::log_str(&format!("Hash: {}", hex::encode(&hash)));

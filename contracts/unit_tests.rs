@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        AuthProxyContract, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
-        SignatureResponse,
+        ActionString, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
+        SignatureResponse, TradingAccountContract,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -11,6 +11,8 @@ mod tests {
         test_utils::{VMContextBuilder, accounts},
         testing_env,
     };
+    use omni_transaction::TxBuilder;
+    use omni_transaction::near::utils::PublicKeyStrExt;
     use std::str::FromStr;
 
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
@@ -25,7 +27,7 @@ mod tests {
     fn test_new() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = AuthProxyContract::new(
+        let contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -36,7 +38,7 @@ mod tests {
     fn test_authorize_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -49,7 +51,7 @@ mod tests {
     fn test_remove_authorized_user() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer".to_string()).unwrap(),
         );
@@ -66,7 +68,7 @@ mod tests {
     fn test_unauthorized_add_user() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -77,7 +79,7 @@ mod tests {
     fn test_get_authorized_users() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -96,7 +98,7 @@ mod tests {
     fn test_unauthorized_request_signature() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -107,6 +109,7 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]),                  // block_hash: Base58CryptoHash
             "secp256k1:abcd".to_string(),                       // public_key: String
             "test_path".to_string(),                            // path: String
+            None,                                               // domain_id: Option<u32>
         );
     }
 
@@ -117,7 +120,7 @@ mod tests {
     fn test_disallowed_action() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -140,6 +143,119 @@ mod tests {
             Base58CryptoHash::from([0u8; 32]), // block_hash
             "secp256k1:abcd".to_string(),      // public_key
             "ed25519:wxyz".to_string(),        // path
+            None,                              // domain_id: Option<u32>
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Transfer actions must be accompanied by at least one FunctionCall action"
+    )]
+    fn test_request_signature_single_transfer_action_fails() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "Transfer",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        contract.request_signature(
+            AccountId::try_from("bad-account.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "trading-account.near".to_string(),
+            None, // domain_id: Option<u32>
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "GasExceeded")]
+    fn test_request_signature_multiple_actions_with_transfer_succeeds() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "FunctionCall",
+                "method_name": "ft_transfer_call",
+                "args": {"receiver_id": "alice.near", "amount": "1000000000000000000000000"},
+                "gas": "100000000000000",
+                "deposit": "1000000000000000000000000"
+            },
+            {
+                "type": "Transfer",
+                "deposit": "1000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        let _result = contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "trading-account.near".to_string(),
+            None, // domain_id: Option<u32>
+        );
+        // Test passes  - gas exceeded - but validation succeeds
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Transfer actions must be accompanied by at least one FunctionCall action"
+    )]
+    fn test_request_signature_multiple_transfer_actions_without_function_call_fails() {
+        let context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        testing_env!(get_context(accounts(1)).build());
+        contract.add_authorized_user(accounts(2));
+
+        let actions_json = r#"[
+            {
+                "type": "Transfer",
+                "deposit": "1000000000000000000000000"
+            },
+            {
+                "type": "Transfer",
+                "deposit": "2000000000000000000000000"
+            }
+        ]"#;
+
+        testing_env!(get_context(accounts(2)).build());
+        contract.request_signature(
+            AccountId::try_from("wrap.near".to_string()).unwrap(),
+            actions_json.to_string(),
+            U64(1),
+            Base58CryptoHash::from([0u8; 32]),
+            "ed25519:11111111111111111111111111111111".to_string(),
+            "trading-account.near".to_string(),
+            None, // domain_id: Option<u32>
         );
     }
 
@@ -190,7 +306,7 @@ mod tests {
     fn test_add_full_access_key_owner() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -205,7 +321,7 @@ mod tests {
     fn test_add_full_access_key_non_owner() {
         let context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -218,7 +334,7 @@ mod tests {
         let mut context = get_context(accounts(1));
         context.attached_deposit(near_sdk::NearToken::from_yoctonear(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
@@ -233,11 +349,382 @@ mod tests {
         let mut context = get_context(accounts(2));
         context.attached_deposit(near_sdk::NearToken::from_yoctonear(1));
         testing_env!(context.build());
-        let mut contract = AuthProxyContract::new(
+        let mut contract = TradingAccountContract::new(
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
         contract.add_full_access_key_and_register_with_intents(pk);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_valid_function_call() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({"receiver_id": "alice.near", "amount": "1000000000000000000000000"}),
+            gas: "100000000000000".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_ok());
+        let omni_actions = result.unwrap();
+        assert_eq!(omni_actions.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_valid_transfer() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![
+            ActionString::Transfer {
+                deposit: "500000000000000000000000".to_string(),
+            },
+            ActionString::FunctionCall {
+                method_name: "ft_transfer_call".to_string(),
+                args: serde_json::json!({"receiver_id": "alice.near", "amount": "1000000000000000000000000"}),
+                gas: "100000000000000".to_string(),
+                deposit: "1000000000000000000000000".to_string(),
+            },
+        ];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_ok());
+        let omni_actions = result.unwrap();
+        assert_eq!(omni_actions.len(), 2);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_disallowed_contract() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({}),
+            gas: "100000000000000".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("disallowed.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("is not allowed"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_disallowed_method() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "disallowed_method".to_string(),
+            args: serde_json::json!({}),
+            gas: "100000000000000".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Method disallowed_method is restricted"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_invalid_gas_format() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({}),
+            gas: "invalid_gas".to_string(),
+            deposit: "1000000000000000000000000".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid gas format"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_invalid_deposit_format() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![ActionString::FunctionCall {
+            method_name: "ft_transfer_call".to_string(),
+            args: serde_json::json!({}),
+            gas: "100000000000000".to_string(),
+            deposit: "invalid_deposit".to_string(),
+        }];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid deposit format"));
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_multiple_actions() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![
+            ActionString::FunctionCall {
+                method_name: "ft_transfer_call".to_string(),
+                args: serde_json::json!({"receiver_id": "alice.near"}),
+                gas: "100000000000000".to_string(),
+                deposit: "1000000000000000000000000".to_string(),
+            },
+            ActionString::Transfer {
+                deposit: "500000000000000000000000".to_string(),
+            },
+            ActionString::FunctionCall {
+                method_name: "near_deposit".to_string(),
+                args: serde_json::json!({}),
+                gas: "50000000000000".to_string(),
+                deposit: "0".to_string(),
+            },
+        ];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_ok());
+        let omni_actions = result.unwrap();
+        assert_eq!(omni_actions.len(), 3);
+    }
+
+    #[test]
+    fn test_validate_and_build_actions_empty_actions() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        let actions = vec![];
+
+        let contract_id = AccountId::try_from("wrap.near".to_string()).unwrap();
+        let result = contract.validate_and_build_actions(actions, &contract_id);
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Actions cannot be empty"));
+    }
+
+    #[test]
+    fn test_create_signature_request_with_domain_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let result = contract.create_signature_request(
+            &tx,
+            "test.trading-account.near".to_string(),
+            Some(1),
+        );
+
+        // Verify the result is valid JSON
+        assert!(result.is_object());
+
+        // Verify the structure contains the expected fields
+        let request_obj = result.get("request").unwrap();
+        assert!(request_obj.get("payload_v2").is_some());
+        assert!(request_obj.get("path").is_some());
+        assert!(request_obj.get("domain_id").is_some());
+
+        // Verify specific values
+        assert_eq!(
+            request_obj.get("path").unwrap().as_str().unwrap(),
+            "test.trading-account.near"
+        );
+        assert_eq!(request_obj.get("domain_id").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_create_signature_request_without_domain_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer.testnet".to_string()).unwrap(),
+        );
+
+        // Create a simple mock transaction using the same pattern as in the main code
+        let tx = omni_transaction::TransactionBuilder::new::<omni_transaction::NEAR>()
+            .signer_id("test.near".to_string())
+            .signer_public_key(
+                "ed25519:11111111111111111111111111111111"
+                    .to_public_key()
+                    .unwrap(),
+            )
+            .nonce(1)
+            .receiver_id("wrap.near".to_string())
+            .block_hash(omni_transaction::near::types::BlockHash([0u8; 32]))
+            .actions(vec![])
+            .build();
+
+        let result =
+            contract.create_signature_request(&tx, "test.trading-account.near".to_string(), None);
+
+        // Verify the result is valid JSON
+        assert!(result.is_object());
+
+        // Verify the structure contains the expected fields
+        let request_obj = result.get("request").unwrap();
+        assert!(request_obj.get("payload_v2").is_some());
+        assert!(request_obj.get("path").is_some());
+        assert!(request_obj.get("domain_id").is_some());
+
+        // Verify specific values
+        assert_eq!(
+            request_obj.get("path").unwrap().as_str().unwrap(),
+            "test.trading-account.near"
+        );
+        assert_eq!(request_obj.get("domain_id").unwrap().as_u64().unwrap(), 0); // Should default to NEAR_MPC_DOMAIN_ID
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_small_numbers() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let json_input = r#"{"deposit":1000000,"other_field":"value"}"#.to_string();
+
+        let result = contract.convert_deposits_to_strings(
+            json_input,
+            &[omni_transaction::near::types::U128(1000000)],
+        );
+
+        // All deposit values should be converted to strings
+        assert_eq!(result, r#"{"deposit":"1000000","other_field":"value"}"#);
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_large_numbers() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let large_number = 10_000_000_000_000_000_000_000u128; // Larger than MAX_SAFE_INTEGER
+        let json_input = format!(r#"{{"deposit":{},"other_field":"value"}}"#, large_number);
+
+        let result = contract.convert_deposits_to_strings(
+            json_input,
+            &[omni_transaction::near::types::U128(large_number)],
+        );
+
+        // Large numbers should be converted to strings (no scientific notation)
+        assert_eq!(
+            result,
+            format!(r#"{{"deposit":"{}","other_field":"value"}}"#, large_number)
+        );
+    }
+
+    #[test]
+    fn test_convert_deposits_to_strings_multiple_deposits() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        let large_number1 = 10_000_000_000_000_000_000_000u128;
+        let large_number2 = 20_000_000_000_000_000_000_000u128;
+        let small_number = 1000000u128;
+
+        let json_input = format!(
+            r#"{{"actions":[{{"deposit":{}}},{{"deposit":{}}},{{"deposit":{}}}]}}"#,
+            large_number1, small_number, large_number2
+        );
+
+        let result = contract.convert_deposits_to_strings(
+            json_input,
+            &[
+                omni_transaction::near::types::U128(large_number1),
+                omni_transaction::near::types::U128(small_number),
+                omni_transaction::near::types::U128(large_number2),
+            ],
+        );
+
+        // All deposit values should be converted to strings (no scientific notation)
+        let expected = format!(
+            r#"{{"actions":[{{"deposit":"{}"}},{{"deposit":"{}"}},{{"deposit":"{}"}}]}}"#,
+            large_number1, small_number, large_number2
+        );
+        assert_eq!(result, expected);
     }
 }
