@@ -52,9 +52,9 @@ echo "Building contract..."
 RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
 
 # Set variables
-# https://nearblocks.io/txns/6iyX1GMA3wGrh2qtz8hKv7ppf1ngV83nKiz8ZKDAE71a
+# https://nearblocks.io/txns/FSP5xgN2dKg4dX64dMV3P92MnvhbRYPZHqZx2cdpvuUQ
 #near contract deploy-as-global use-file /Users/charles/.nearai/registry/charleslavon.near/ft-allowance/contracts/target/near/proxy_contract.wasm as-global-hash peerfolio.testnet network-config testnet sign-with-keychain send
-GLOBAL_PROXY_CODE_HASH="CxhHoMAytiy39MSyKCJRksiWXvhYdRYncFpcVWAd4Pbg"
+GLOBAL_PROXY_CODE_HASH="AYGEtDuRFvjJ4Zjkbeak8PugbZByWG3g1tgxhyHpg6BC"
 WASM_PATH="target/near/proxy_factory.wasm"
 FACTORY_ACCOUNT="auth-v1.peerfolio.$NETWORK"
 FACTORY_OWNER="peerfolio.$NETWORK"
