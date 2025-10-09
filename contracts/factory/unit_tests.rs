@@ -3,9 +3,8 @@ mod tests {
 
     use crate::TradingAccountFactory;
     use near_sdk::{
-        AccountId, Gas, NearToken, Promise, PublicKey,
-        test_utils::{VMContextBuilder, accounts},
-        testing_env,
+        test_utils::{accounts, VMContextBuilder},
+        testing_env, AccountId, Gas, NearToken, Promise, PublicKey,
     };
     use std::str::FromStr;
 
@@ -27,7 +26,8 @@ mod tests {
 
     #[test]
     fn test_factory_initialization() {
-        let context = get_context(accounts(1), "factory.testnet".parse().unwrap(), None);
+        let account = accounts(1);
+        let context = get_context(account.clone(), "factory.testnet".parse().unwrap(), None);
         testing_env!(context.build());
 
         let contract = TradingAccountFactory::new(
@@ -38,6 +38,7 @@ mod tests {
             contract.get_signer_contract(),
             "v1.signer-prod.testnet".parse::<AccountId>().unwrap()
         );
+        assert_eq!(contract.get_owner_id(), account);
     }
 
     #[test]
@@ -164,7 +165,11 @@ mod tests {
             "EaFtguW8o7cna1k8EtD4SFfGNdivuCPhx2Qautn7J3Rz".to_string(),
         );
 
-        // This should fail because accounts(2) is not the owner
+        // Switch the caller to a different account (accounts(3)) so the call is unauthorized
+        let caller_context = get_context(accounts(3), "factory.testnet".parse().unwrap(), None);
+        testing_env!(caller_context.build());
+
+        // This should fail because accounts(3) is not the owner
         contract.set_global_code_hash("NewHash123456789012345678901234567890".to_string());
     }
 
