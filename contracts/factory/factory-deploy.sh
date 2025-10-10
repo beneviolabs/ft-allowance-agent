@@ -59,8 +59,8 @@ WASM_PATH="target/near/proxy_factory.wasm"
 FACTORY_ACCOUNT="auth-v1.peerfolio.$NETWORK"
 FACTORY_OWNER="peerfolio.$NETWORK"
 
-echo "Optimizing WASM with bulk memory support..."
-wasm-opt --enable-bulk-memory -Oz -o "$WASM_PATH.optimized" "$WASM_PATH"
+echo "Optimizing WASM with bulk memory and sign extension support..."
+wasm-opt --enable-bulk-memory --enable-sign-ext -Oz -o "$WASM_PATH.optimized" "$WASM_PATH"
 mv "$WASM_PATH.optimized" "$WASM_PATH"
 
 # Verify WASM magic header after optimization

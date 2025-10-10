@@ -64,8 +64,8 @@ jobs:
           ./build_auth_proxy.sh
           cd factory
           RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt
-          # Run wasm-opt manually with bulk memory enabled
-          wasm-opt --enable-bulk-memory -O target/wasm32-unknown-unknown/release/proxy_factory.wasm -o target/near/proxy_factory.wasm
+          # Run wasm-opt manually with bulk memory and sign extension enabled
+          wasm-opt --enable-bulk-memory --enable-sign-ext -O target/wasm32-unknown-unknown/release/proxy_factory.wasm -o target/near/proxy_factory.wasm
 
       - name: Run tests
         run: ./test.sh
