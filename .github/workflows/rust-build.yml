@@ -11,7 +11,7 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  test:
+  test-and-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,26 +29,19 @@ jobs:
       - name: Install wasm32 target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
       - name: Check formatting
         run: cargo fmt -- --check
 
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
-      - name: Run tests
-        run: ./test.sh
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: contracts
-    steps:
-      - uses: actions/checkout@v4
-
-      # Use nightly for building, matching ./build_auth_proxy.sh
-      - name: Install Rust
+      # Build contracts first for integration tests
+      - name: Install Rust (nightly) for building
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
@@ -65,3 +58,14 @@ jobs:
           ./build_auth_proxy.sh
           cd factory
           RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
+
+      - name: Run tests
+        run: ./test.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm
+          path: |
+            contracts/target/near/proxy_contract.wasm
+            contracts/factory/target/near/proxy_factory.wasm
