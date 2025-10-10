@@ -38,6 +38,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          working-directory: contracts
 
       - name: Check formatting
         run: cargo fmt -- --check
