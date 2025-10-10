@@ -49,7 +49,7 @@ else
 fi
 # Build the contract
 echo "Building contract..."
-RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt
+RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
 
 # Set variables
 # https://nearblocks.io/txns/6iyX1GMA3wGrh2qtz8hKv7ppf1ngV83nKiz8ZKDAE71a
@@ -59,9 +59,6 @@ WASM_PATH="target/near/proxy_factory.wasm"
 FACTORY_ACCOUNT="auth-v1.peerfolio.$NETWORK"
 FACTORY_OWNER="peerfolio.$NETWORK"
 
-echo "Optimizing WASM with bulk memory and sign extension support..."
-wasm-opt --enable-bulk-memory --enable-sign-ext -Oz -o "$WASM_PATH.optimized" "$WASM_PATH"
-mv "$WASM_PATH.optimized" "$WASM_PATH"
 
 # Verify WASM magic header after optimization
 echo "Verifying WASM header..."
