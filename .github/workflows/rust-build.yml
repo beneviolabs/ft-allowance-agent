@@ -7,9 +7,11 @@ on:
       - '**/*.rs'
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+  pull_request:
+    branches: [ main, develop ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -17,11 +19,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libudev-dev pkg-config
+      # Use stable for testing/formatting
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
 
+      - name: Install wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        run: ./test.sh
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      # Use nightly for building, matching ./build_auth_proxy.sh
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -29,18 +55,10 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt
 
-        # TODO: fix miss cause could not find `Cargo.toml` in `/home/runner/work/ft-allowance-agent/ft-allowance-agent` or any parent directory
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
       - name: Install cargo-near
         run: cargo install cargo-near --version 0.15.0 --locked
-        uses: dtolnay/rust-toolchain@master
-          toolchain: nightly
 
-      - name: Build Rust code
+      - name: Build Contracts
         run: |
           rustup component add rust-src
           chmod +x build_auth_proxy.sh
