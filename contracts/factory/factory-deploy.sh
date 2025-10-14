@@ -49,7 +49,7 @@ else
 fi
 # Build the contract
 echo "Building contract..."
-RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
+RUSTFLAGS="-Z unstable-options -C target-feature=+bulk-memory" cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt
 
 # Set variables
 # https://nearblocks.io/txns/6iyX1GMA3wGrh2qtz8hKv7ppf1ngV83nKiz8ZKDAE71a

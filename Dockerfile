@@ -1,5 +1,6 @@
 # Multi-stage Dockerfile for NEAR contract development
-FROM --platform=linux/amd64 ubuntu:22.04
+ARG PLATFORM=linux/amd64
+FROM --platform=$PLATFORM ubuntu:22.04
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

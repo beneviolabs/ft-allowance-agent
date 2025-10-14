@@ -8,10 +8,10 @@ docker-run:
 	docker run --rm -it -v $(PWD):/workspace -w /workspace near-contract-builder bash
 
 docker-test:
-	docker run --rm -v $(PWD):/workspace -w /workspace near-contract-builder bash -c "cd contracts && ./test.sh"
+	docker run --rm -v $(PWD):/workspace -w /workspace near-contract-builder bash -c "cd contracts && ./test-docker.sh"
 
 docker-build-contracts:
-	docker run --rm -v $(PWD):/workspace -w /workspace near-contract-builder bash -c "cd contracts && ./build_auth_proxy.sh && cd factory && RUSTFLAGS='-Z unstable-options' cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt"
+	docker run --rm -v $(PWD):/workspace -w /workspace near-contract-builder bash -c "cd contracts && ./build_auth_proxy.sh && cd factory && RUSTFLAGS='-Z unstable-options -C target-feature=+bulk-memory' cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt"
 
 docker-clean:
 	docker system prune -f
