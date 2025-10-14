@@ -19,10 +19,10 @@ echo -e "${GREEN}Running Integration Tests (Docker - skipping sandbox tests)...$
 cd ..
 # Skip integration tests that require near-workspaces sandbox
 cargo test integration_tests --lib -- --nocapture --skip sandbox
+TEST_RESULT=$?
 echo ""
-
 # Check if any tests failed
-if [ $? -eq 0 ]; then
+if [ $TEST_RESULT -eq 0 ]; then
     echo -e "${GREEN}All tests passed!${NC}"
 else
     echo -e "${RED}Some tests failed!${NC}"
