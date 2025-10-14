@@ -24,8 +24,9 @@ RUN rustup target add wasm32-unknown-unknown --toolchain nightly
 RUN rustup component add rustfmt clippy --toolchain stable
 RUN rustup component add rust-src --toolchain nightly
 
-# Install cargo-near
+# Install cargo-near and cargo-audit
 RUN cargo install cargo-near --version 0.15.0 --locked
+RUN cargo install cargo-audit
 
 # Set working directory
 WORKDIR /workspace
