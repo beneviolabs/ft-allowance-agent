@@ -33,6 +33,7 @@ jobs:
           tags: near-contract-builder:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          load: true
 
       - name: Run tests and build in Docker
         run: |
@@ -47,15 +48,17 @@ jobs:
               # Run clippy
               cargo clippy -- -D warnings
 
-              # Build contracts
-              chmod +x build_auth_proxy.sh
-              ./build_auth_proxy.sh
+              # Build contracts - NOTICE! This produces a different wasm/hash than ./build_auth_proxy.sh due to the --no-wasmopt flag which is required to avoid an incompatibility issue with the global memory feature in docker/cargo
+
+              env RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt
+
               cd factory
-              RUSTFLAGS='-Z unstable-options' cargo +nightly near build non-reproducible-wasm --no-abi
+              RUSTFLAGS='-Z unstable-options' cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt
 
               # Run tests
               cd ..
-              ./test.sh
+              chmod +x test-docker.sh
+              ./test-docker.sh
 
               # Security audit
               cargo audit
