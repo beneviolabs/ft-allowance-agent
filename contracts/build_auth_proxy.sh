@@ -4,4 +4,4 @@ echo "Running cargo formatter "
 cargo fmt
 
 
-env RUSTFLAGS="-Z unstable-options -C target-feature=+bulk-memory" cargo +nightly near build non-reproducible-wasm --no-abi --no-wasmopt
+env RUSTFLAGS="-Z unstable-options" cargo +nightly near build non-reproducible-wasm --no-abi
