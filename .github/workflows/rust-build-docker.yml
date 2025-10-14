@@ -1,0 +1,82 @@
+name: rust-build-docker
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'Dockerfile'
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: near-contract-builder:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run tests and build in Docker
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            near-contract-builder:latest \
+            bash -c "
+              # Check formatting
+              cargo fmt -- --check
+
+              # Run clippy
+              cargo clippy -- -D warnings
+
+              # Build contracts
+              chmod +x build_auth_proxy.sh
+              ./build_auth_proxy.sh
+              cd factory
+              RUSTFLAGS='-Z unstable-options' cargo +nightly near build non-reproducible-wasm --no-abi
+
+              # Run tests
+              cd ..
+              ./test.sh
+
+              # Security audit
+              cargo audit
+
+              # Contract size check
+              MAX_SIZE=4194304
+              SIZE=\$(stat -c%s target/near/proxy_contract.wasm)
+              if [ \$SIZE -gt \$MAX_SIZE ]; then
+                echo \"Contract size \$SIZE exceeds NEAR limit \$MAX_SIZE\"
+                exit 1
+              fi
+            "
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm
+          path: |
+            contracts/target/near/proxy_contract.wasm
+            contracts/factory/target/near/proxy_factory.wasm
+
+      - name: Dependency vulnerability scan
+        uses: actions/dependency-review-action@v4
+        if: github.event_name == 'pull_request'
