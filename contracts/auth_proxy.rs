@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use actions::NearAction;
 use near_gas::NearGas;
 use near_sdk::base64;

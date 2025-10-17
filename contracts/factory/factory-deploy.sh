@@ -59,9 +59,6 @@ WASM_PATH="target/near/proxy_factory.wasm"
 FACTORY_ACCOUNT="auth-v1.peerfolio.$NETWORK"
 FACTORY_OWNER="peerfolio.$NETWORK"
 
-echo "Optimizing WASM..."
-wasm-opt -Oz -o "$WASM_PATH.optimized" "$WASM_PATH"
-mv "$WASM_PATH.optimized" "$WASM_PATH"
 
 # Verify WASM magic header after optimization
 echo "Verifying WASM header..."
