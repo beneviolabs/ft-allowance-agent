@@ -33,7 +33,7 @@ impl TradingAccountFactory {
         Self {
             signer_contract,
             global_proxy_base58_hash: Self::decode_code_hash(&global_proxy_base58_hash),
-            owner_id: env::current_account_id(),
+            owner_id: env::predecessor_account_id(),
         }
     }
 
@@ -174,6 +174,10 @@ impl TradingAccountFactory {
     }
 
     // View methods
+    pub fn get_owner_id(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
     pub fn get_proxy_code_base58_hash(&self) -> String {
         bs58::encode(&self.global_proxy_base58_hash).into_string()
     }
