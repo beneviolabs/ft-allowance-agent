@@ -21,6 +21,7 @@ const ALLOWED_METHODS: &[&str] = &[
     "near_deposit",
     "mt_transfer_call",
     "mt_transfer",
+    "ft_withdraw",
 ];
 
 impl NearAction {
