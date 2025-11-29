@@ -264,6 +264,14 @@ impl TradingAccountContract {
             contract_id, actions, nonce.0, block_hash
         ));
 
+        // Validate MPC public key early
+        let mpc_public_key = match mpc_signer_pk.to_public_key() {
+            Ok(pk) => pk,
+            Err(e) => {
+                env::panic_str(&format!("Invalid MPC public key format: {}", e));
+            }
+        };
+
         // Validate and build OmniActions
         let omni_actions = match self.validate_and_build_actions(actions, &contract_id) {
             Ok(actions) => actions,
@@ -275,12 +283,7 @@ impl TradingAccountContract {
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(match mpc_signer_pk.to_public_key() {
-                Ok(pk) => pk,
-                Err(e) => {
-                    env::panic_str(&format!("Invalid MPC public key format: {}", e));
-                }
-            })
+            .signer_public_key(mpc_public_key)
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
@@ -316,7 +319,7 @@ impl TradingAccountContract {
 
         // Serialize transaction into a string to pass into callback
         let mut tx_json_string = serde_json::to_string(&tx)
-            .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
+            .expect("Internal bug: transaction serialization should never fail");
 
         // Convert large deposit numbers to strings for JSON compatibility
         tx_json_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
@@ -412,9 +415,9 @@ impl TradingAccountContract {
             }
         };
 
-        // Deserialize transaction
+        // Deserialize transaction that we serialized in request_signature
         let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
-            .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
+            .expect("Internal bug: failed to deserialize our own transaction JSON");
 
         let message_hash = utils::hash_payload(&near_tx.build_for_signing());
         near_sdk::env::log_str(&format!("Message hash: {}", hex::encode(message_hash)));
