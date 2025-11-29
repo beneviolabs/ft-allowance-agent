@@ -256,8 +256,9 @@ impl TradingAccountContract {
         );
 
         // Parse actions from JSON string
-        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
-            .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
+        let actions: Vec<ActionString> = serde_json::from_str(&actions_json).unwrap_or_else(|e| {
+            near_sdk::env::panic_str(&format!("Failed to parse actions JSON: {:?}", e))
+        });
 
         near_sdk::env::log_str(&format!(
             "Request received - Contract: {}, Actions: {:?}, Nonce: {}, Block Hash: {:?}",
@@ -268,7 +269,7 @@ impl TradingAccountContract {
         let mpc_public_key = match mpc_signer_pk.to_public_key() {
             Ok(pk) => pk,
             Err(e) => {
-                env::panic_str(&format!("Invalid MPC public key format: {}", e));
+                near_sdk::env::panic_str(&format!("Invalid MPC public key format: {}", e));
             }
         };
 
@@ -276,7 +277,10 @@ impl TradingAccountContract {
         let omni_actions = match self.validate_and_build_actions(actions, &contract_id) {
             Ok(actions) => actions,
             Err(e) => {
-                env::panic_str(&e);
+                near_sdk::env::panic_str(&format!(
+                    "Failed to validate and build OmniActions: {:?}",
+                    e
+                ));
             }
         };
 
@@ -341,7 +345,7 @@ impl TradingAccountContract {
         let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
             Ok(bytes) => bytes,
             Err(e) => {
-                env::panic_str(&format!("Failed to serialize request payload: {}", e));
+                near_sdk::env::panic_str(&format!("Failed to serialize request payload: {}", e));
             }
         };
 
@@ -406,12 +410,17 @@ impl TradingAccountContract {
     ) -> String {
         let response = match call_result {
             Ok(response) => {
-                near_sdk::env::log_str(&format!("Parsed JSON response: {:?}", response));
+                near_sdk::env::log_str(&format!(
+                    "Parsed the MPC's Signature response: {:?}",
+                    response
+                ));
                 response
             }
             Err(e) => {
-                near_sdk::env::log_str(&format!("Failed to parse JSON: {:?}", e));
-                panic!("Failed to parse response JSON");
+                near_sdk::env::panic_str(&format!(
+                    "Failed to parse the MPC's Signature response: {:?}",
+                    e
+                ));
             }
         };
 
@@ -426,6 +435,10 @@ impl TradingAccountContract {
         let omni_signature = match response {
             SignatureResponse::Eddsa(eddsa) => {
                 near_sdk::env::log_str("Using ED25519 signature format");
+
+                if eddsa.signature.len() != 64 {
+                    near_sdk::env::panic_str("Invalid ED25519 signature length from MPC");
+                }
                 Signature::ED25519(ED25519Signature {
                     r: eddsa.signature[0..32].try_into().unwrap(),
                     s: eddsa.signature[32..64].try_into().unwrap(),
@@ -454,7 +467,7 @@ impl TradingAccountContract {
                     }
                     None => {
                         near_sdk::env::log_str("Signature verification failed!");
-                        panic!("Invalid signature: ecrecover failed");
+                        near_sdk::env::panic_str("Invalid signature: ecrecover failed");
                     }
                 }
 
