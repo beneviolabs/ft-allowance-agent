@@ -153,7 +153,7 @@ mod tests {
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
-        contract.request_signature(
+        let _ = contract.request_signature(
             accounts(3),                                        // contract_id: AccountId
             "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // actions_json: String
             U64(1),                                             // nonce: U64
@@ -187,7 +187,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let _ = contract.request_signature(
             accounts(3),                       // contract_id
             actions_json.to_string(),          // actions_json
             U64(1),                            // nonce
@@ -221,7 +221,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let _ = contract.request_signature(
             AccountId::try_from("bad-account.near".to_string()).unwrap(),
             actions_json.to_string(),
             U64(1),
@@ -299,7 +299,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let _ = contract.request_signature(
             AccountId::try_from("wrap.near".to_string()).unwrap(),
             actions_json.to_string(),
             U64(1),
@@ -357,7 +357,7 @@ mod tests {
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
-        contract.add_full_access_key(pk);
+        let _ = contract.add_full_access_key(pk);
     }
 
     #[test]
@@ -385,7 +385,7 @@ mod tests {
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
-        contract.add_full_access_key_and_register_with_intents(pk);
+        let _ = contract.add_full_access_key_and_register_with_intents(pk);
     }
 
     #[test]
