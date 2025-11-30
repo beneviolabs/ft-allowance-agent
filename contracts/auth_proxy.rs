@@ -43,6 +43,7 @@ const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 const NEAR_MPC_DOMAIN_ID: u32 = 0;
+const MAX_AUTHORIZED_USERS: u64 = 10; // Maximum number of authorized users per trading account
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -90,6 +91,14 @@ impl TradingAccountContract {
     // Owner methods for managing authorized users
     pub fn add_authorized_user(&mut self, account_id: AccountId) {
         self.assert_owner();
+
+        // Check maximum limit before adding
+        assert!(
+            self.authorized_users.len() < MAX_AUTHORIZED_USERS,
+            "Maximum number of authorized users reached:({}). One must be removed before adding another.",
+            MAX_AUTHORIZED_USERS
+        );
+
         self.authorized_users.insert(&account_id);
     }
 

@@ -94,6 +94,57 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Maximum number of authorized users reached:(10)")]
+    fn test_max_authorized_users_limit() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Add 10 authorized users (the maximum)
+        for i in 0..10 {
+            let user = AccountId::try_from(format!("user{}.testnet", i)).unwrap();
+            contract.add_authorized_user(user);
+        }
+
+        // Attempting to add an 11th user should panic
+        let user11 = AccountId::try_from("user11.testnet".to_string()).unwrap();
+        contract.add_authorized_user(user11);
+    }
+
+    #[test]
+    fn test_max_authorized_users_remove_and_add() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Add 10 authorized users (the maximum)
+        for i in 0..10 {
+            let user = AccountId::try_from(format!("user{}.testnet", i)).unwrap();
+            contract.add_authorized_user(user);
+        }
+
+        // Verify we have 10 users
+        assert_eq!(contract.get_authorized_users().len(), 10);
+
+        // Remove one user
+        let user0 = AccountId::try_from("user0.testnet".to_string()).unwrap();
+        contract.remove_authorized_user(user0);
+        assert_eq!(contract.get_authorized_users().len(), 9);
+
+        // Now we should be able to add another user
+        let user11 = AccountId::try_from("user11.testnet".to_string()).unwrap();
+        contract.add_authorized_user(user11.clone());
+        assert_eq!(contract.get_authorized_users().len(), 10);
+        assert!(contract.is_authorized(user11));
+    }
+
+    #[test]
     #[should_panic(expected = "Unauthorized: only authorized users can request signatures")]
     fn test_unauthorized_request_signature() {
         let context = get_context(accounts(2));
