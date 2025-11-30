@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct EddsaPayload {
+pub struct EcdsaPayload {
     pub ecdsa: String,
 }
 
@@ -44,7 +44,7 @@ pub enum SignatureResponse {
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct SignRequest {
-    pub payload_v2: EddsaPayload,
+    pub payload_v2: EcdsaPayload,
     pub path: String,
     pub domain_id: u32,
 }

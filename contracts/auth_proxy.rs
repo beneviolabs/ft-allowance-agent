@@ -206,11 +206,11 @@ impl TradingAccountContract {
         let hashed_payload = utils::hash_payload(&tx.build_for_signing());
 
         let sign_request = SignRequest {
-            payload_v2: EddsaPayload {
+            payload_v2: EcdsaPayload {
                 ecdsa: hex::encode(hashed_payload),
             },
             path: derivation_path,
-            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
+            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID), // domain_id != 0 requies a transaction payload for the target chain e.g. SOL
         };
 
         serde_json::json!({ "request": sign_request })
