@@ -13,7 +13,7 @@ path = "auth_proxy.rs"
 
 
 [dependencies]
-near-sdk = {version = "5.17.2", features = ["unit-testing", "unstable", "legacy"] }
+near-sdk = {version = "5.17.2", default-features = false, features = ["unit-testing", "unstable", "legacy"] }
 near-contract-standards = "5.17.2"
 near-gas = "0.3.0"
 borsh = "1.5.1"
@@ -30,7 +30,7 @@ once_cell = "1.21.3"
 
 
 [dev-dependencies]
-near-workspaces = "0.20.1"
+near-workspaces = "0.21.0"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"
 anyhow = "1.0"
