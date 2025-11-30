@@ -14,7 +14,7 @@ use near_sdk::{
 
 use omni_transaction::TransactionBuilder;
 use omni_transaction::TxBuilder;
-use omni_transaction::near::types::{ED25519Signature, Secp256K1Signature};
+use omni_transaction::near::types::Secp256K1Signature;
 use omni_transaction::near::utils::PublicKeyStrExt;
 use omni_transaction::{
     NEAR,
@@ -432,54 +432,41 @@ impl TradingAccountContract {
         near_sdk::env::log_str(&format!("Message hash: {}", hex::encode(message_hash)));
 
         // Handle different signature formats
-        let omni_signature = match response {
-            SignatureResponse::Eddsa(eddsa) => {
-                near_sdk::env::log_str("Using ED25519 signature format");
+        let omni_signature = {
+            near_sdk::env::log_str("Using SECP256K1 signature format");
+            // Convert signature components
+            let r = hex::decode(&response.big_r.affine_point[2..]).expect("Invalid hex in r");
+            let s = hex::decode(&response.s.scalar).expect("Invalid hex in s");
+            let v = response.recovery_id;
 
-                if eddsa.signature.len() != 64 {
-                    near_sdk::env::panic_str("Invalid ED25519 signature length from MPC");
+            // Combine r and s for verification
+            let mut signature = Vec::with_capacity(64);
+            signature.extend_from_slice(&r);
+            signature.extend_from_slice(&s);
+
+            // Verify signature
+            let recovered = self.test_recover(message_hash.to_vec(), signature, v);
+            match recovered {
+                Some(public_key) => {
+                    near_sdk::env::log_str(&format!(
+                        "Signature verified! Recovered public key: {}",
+                        public_key
+                    ));
                 }
-                Signature::ED25519(ED25519Signature {
-                    r: eddsa.signature[0..32].try_into().unwrap(),
-                    s: eddsa.signature[32..64].try_into().unwrap(),
-                })
-            }
-            SignatureResponse::Ecdsa(ecdsa) => {
-                near_sdk::env::log_str("Using SECP256K1 signature format");
-                // Convert signature components
-                let r = hex::decode(&ecdsa.big_r.affine_point[2..]).expect("Invalid hex in r");
-                let s = hex::decode(&ecdsa.s.scalar).expect("Invalid hex in s");
-                let v = ecdsa.recovery_id;
-
-                // Combine r and s for verification
-                let mut signature = Vec::with_capacity(64);
-                signature.extend_from_slice(&r);
-                signature.extend_from_slice(&s);
-
-                // Verify signature
-                let recovered = self.test_recover(message_hash.to_vec(), signature, v);
-                match recovered {
-                    Some(public_key) => {
-                        near_sdk::env::log_str(&format!(
-                            "Signature verified! Recovered public key: {}",
-                            public_key
-                        ));
-                    }
-                    None => {
-                        near_sdk::env::log_str("Signature verification failed!");
-                        near_sdk::env::panic_str("Invalid signature: ecrecover failed");
-                    }
+                None => {
+                    near_sdk::env::log_str("Signature verification failed!");
+                    near_sdk::env::panic_str("Invalid signature: ecrecover failed");
                 }
-
-                // Add individual bytes together in the correct order
-                let mut signature_bytes = [0u8; 65];
-                signature_bytes[..32].copy_from_slice(&r);
-                signature_bytes[32..64].copy_from_slice(&s);
-                signature_bytes[64] = v;
-
-                // Create signature
-                Signature::SECP256K1(Secp256K1Signature(signature_bytes))
             }
+
+            // Add individual bytes together in the correct order
+            let mut signature_bytes = [0u8; 65];
+            signature_bytes[..32].copy_from_slice(&r);
+            signature_bytes[32..64].copy_from_slice(&s);
+            signature_bytes[64] = v;
+
+            // Create signature
+            Signature::SECP256K1(Secp256K1Signature(signature_bytes))
         };
 
         near_sdk::env::log_str(&format!(

@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        ActionString, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
-        SignatureResponse, TradingAccountContract,
+        ActionString, BigR, EcdsaSignatureResponse, ScalarValue, SignatureResponse,
+        TradingAccountContract,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -261,23 +261,8 @@ mod tests {
 
     #[test]
     fn test_signature_response_serialization() {
-        // Test EDDSA signature response
-        let eddsa_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
-            signature: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        });
-
-        let json = serde_json::to_string(&eddsa_response).unwrap();
-        let decoded: SignatureResponse = serde_json::from_str(&json).unwrap();
-
-        match decoded {
-            SignatureResponse::Eddsa(eddsa) => {
-                assert_eq!(eddsa.signature, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-            }
-            _ => panic!("Expected EDDSA signature response"),
-        }
-
         // Test ECDSA signature response
-        let ecdsa_response = SignatureResponse::Ecdsa(EcdsaSignatureResponse {
+        let ecdsa_response = EcdsaSignatureResponse {
             scheme: "Secp256k1".to_string(),
             big_r: BigR {
                 affine_point: "03D0E412BEEBF4B0191C08E13323466A96582C95A2B0BAF4CB6859968B86C01157"
@@ -288,18 +273,13 @@ mod tests {
                     .to_string(),
             },
             recovery_id: 1,
-        });
+        };
 
         let json = serde_json::to_string(&ecdsa_response).unwrap();
         let decoded: SignatureResponse = serde_json::from_str(&json).unwrap();
 
-        match decoded {
-            SignatureResponse::Ecdsa(ecdsa) => {
-                assert_eq!(ecdsa.scheme, "Secp256k1");
-                assert_eq!(ecdsa.recovery_id, 1);
-            }
-            _ => panic!("Expected ECDSA signature response"),
-        }
+        assert_eq!(decoded.scheme, "Secp256k1");
+        assert_eq!(decoded.recovery_id, 1);
     }
 
     #[test]
