@@ -1,13 +1,13 @@
 #### MPC Secured Agent Autonomy
 
-1. [The limited access trading account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) manages authorized users for signature requests, allows one to transfer tokens to their trading account and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. near_deposit on wrap.testnet). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your trading account. The system consists of two main contracts:
+1. [The limited access autonomous trading account](https://github.com/beneviolabs/ft-allowance-agent/blob/main/contracts/auth_proxy.rs) manages authorized users for signature requests, allows one to transfer tokens to their trading account and grant an AI agent (i.e any other Near Account) permission to call this proxy contract to request MPC approval to send transactions to a predefined set of contracts and methods (i.e. ft_transfer_call on intents.near). Thereby allowing an Agentic account to act autonomously on your behalf with restricted permissions and access only to the tokens that you transfer to your trading account. The system consists of two main contracts:
     1. Factory Contract (factory.rs):
 
     - Acts as a proxy contract deployer
     - Stores proxy code hash for verification
     - Creates proxy instances with proper initialization (see below for example)
     - Ensures secure deployment with minimum deposit requirements
-    Example usage: `near call auth-v0.peerfolio.testnet deposit_and_create_proxy \
+    Example usage: `near call auth-v0.peerfolio.testnet deposit_and_create_proxy_global \
   '{"owner_id": "alice.testnet"}' \
   --accountId alice.testnet \
   --deposit 4`
@@ -38,19 +38,19 @@ sequenceDiagram
     User->>Wallet: Connect wallet
     Wallet->>User: Function call key for <br> auth-v0.peerfolio.near <br> (limited access)
     critical Approve txn
-        User->>Wallet: (deposit_and_create_proxy) <br> w/ 4 Ⓝ
+        User->>Wallet: (deposit_and_create_proxy_global) <br> w/ 0.004 Ⓝ
     option no balance
         Wallet--xUser: TBD
     option timeout/browser window closed
         Wallet-->User: TBD
     end
-    critical deposit_and_create_proxy()
-        Wallet->>ProxyFac: deposit_and_create_proxy()
+    critical deposit_and_create_proxy_global()
+        Wallet->>ProxyFac: deposit_and_create_proxy_global()
         ProxyFac->>TradingAcc: i. create proxy account<br>ii. transfer deposit<br>iii.deploy AuthProxy contract<br>iv. call AuthProxy.new to<br> set authorized user (user.near) <br> and MPC signer (v1.signer))
     option trading acc already exists
-        ProxyFac-->User: TBD
+        ProxyFac-->User: error message
     option other error
-        ProxyFac--xWallet: Refund 4 Ⓝ
+        ProxyFac--xWallet: Refund 0.004 Ⓝ
     end
 
     critical MPC key registration
@@ -60,7 +60,7 @@ sequenceDiagram
     option service unavailable
         MPC--xUser: Retry flow
     option user rejects txn
-        Wallet--xUser: TBD
+        Wallet--xUser: error message
     end
   ```
 
@@ -71,9 +71,66 @@ Examples
 
 ### Agent execution sequence (swaps etc.)
 
-TBD
+This sequence shows how an agentic process uses the proxy trading account to autonomously execute transactions on behalf of the user.
 
-### Deleting a trading/proxy account
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent as Agentic Process <br> (authorized-agent.near)
+    participant User as Trading Contract Owner <br> (user.near)
+    participant Proxy as Proxy/Trading Account <br>(user.auth-v0.peerfolio.near)
+    participant MPC as MPC Contract <br>(v1.signer-prod.near)
+    participant Target as Target Contract <br>(wrap.near / intents.near)
+    participant NEAR as NEAR Protocol
+
+    Note over Agent,NEAR: Agent is pre-authorized by user via add_authorized_user()
+    User->>Agent: User has already set the market conditions which should trigger the agentic actions.
+
+    Agent->>Agent: Analyze market conditions<br/>Decide to execute trade
+    Agent->>NEAR: Get latest block hash & nonce
+    NEAR-->>Agent: block_hash, nonce
+
+    Agent->>Proxy: request_signature(<br/>contract_id: "wrap.near",<br/>actions_json: '[{"type":"FunctionCall",...}]',<br/>nonce, block_hash,<br/>mpc_signer_pk, derivation_path)
+
+    Note over Proxy: Validate: Is agent authorized?
+    Proxy->>Proxy: Check authorized_users.contains(agent)
+
+    Note over Proxy: Validate: Is action allowed?
+    Proxy->>Proxy: validate_and_build_actions()<br/>✓ Contract in allowlist<br/>✓ Method in allowlist<br/>✓ Build OmniAction
+
+    Proxy->>Proxy: Build transaction with<br/>TransactionBuilder
+
+    Proxy->>Proxy: Hash transaction payload<br/>create_signature_request()
+
+    Proxy->>MPC: sign(request: {<br/>  payload_v2: {ecdsa: hex_hash},<br/>  path: derivation_path,<br/>  domain_id: 0<br/>})
+
+    Note over MPC: MPC generates ECDSA signature<br/>using derivation path
+
+    MPC-->>Proxy: SignatureResponse {<br/>  big_r, s, recovery_id<br/>}
+
+    Proxy->>Proxy: sign_request_callback()<br/>✓ Decode hex signature<br/>✓ Verify via ecrecover<br/>✓ Build signed transaction
+
+    Proxy-->>Agent: base64(signed_transaction)
+
+    Agent->>NEAR: broadcast_tx_commit(signed_tx)
+
+    NEAR->>Target: Execute: near_deposit / swap / etc.
+
+    Target-->>NEAR: Transaction result
+
+    NEAR-->>Agent: tx_hash, status
+
+    Note over Agent: Agent logs execution<br/>Updates strategy
+```
+
+**Key Security Features:**
+- Agent must be pre-authorized via `add_authorized_user()`
+- Only specific contracts allowed: `wrap.near`, `intents.near`
+- Only specific methods allowed: `near_deposit`, `add_public_key`, etc.
+- MPC signature provides cryptographic security
+- All actions are logged on-chain for transparency
+
+### Deleting a trading account
 
 1. Add your main account public key to the proxy account with full access permissions
 ```
@@ -85,7 +142,6 @@ near contract call-function as-transaction <mainaccount>.auth-v0.peerfolio.testn
 near account delete-account <mainaccount>.auth-v0.peerfolio.testnet beneficiary <mainaccount>.testnet network-config testnet sign-with-plaintext-private-key
 ```
 
-#### TODO - Replace the examples and scripts with details on how to onboard via the langchain agent.
 
 #### Examples
 1. [This testnet txn](https://testnet.nearblocks.io/txns/Hi2pfe89tBdMN2oY2dFXLuHcSBVFotx6pHViDQuKUZDi) converting 1 Near to WNear by `agent.charleslavon.testnet` was initiated by `benevio-labs.testnet` who was pre-approved by auth_proxy.rs to use Near's MPC contract to [create a signature](https://testnet.nearblocks.io/txns/831u2KqbdtzvJti5HUhGnp4tZD7Q8onUzD11rwBjrAAm).
@@ -108,9 +164,6 @@ FACTORY_OWNER="peerfolio.$NETWORK"`
     cd contracts && ./build_auth_proxy.sh
     cd factory && ./factory-deploy.sh
     ```
-
-#### Setup your proxy account
-1. TODO - update with link to our langchain onboarding UI.
 
 #### Test Requesting Signatures
 1. Go to [NearBlocks](https://testnet.nearblocks.io/), on the upper right select the `Near Icon`, then `testnet`, then click into a `Latest Block` and copy the block hash.  Now you can simulate a program or agent using your proxy contract by requesting a signature, `./request_signature.sh <block hash> < add_key | deposit > <your-other-account.testnet>`
