@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        ActionString, BigR, EcdsaSignatureResponse, EddsaSignatureResponse, ScalarValue,
-        SignatureResponse, TradingAccountContract,
+        ActionString, BigR, EcdsaSignatureResponse, ScalarValue, SignatureResponse,
+        TradingAccountContract,
     };
     use near_sdk::PublicKey;
     use near_sdk::{
@@ -94,6 +94,57 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Maximum number of authorized users reached:(10)")]
+    fn test_max_authorized_users_limit() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Add 10 authorized users (the maximum)
+        for i in 0..10 {
+            let user = AccountId::try_from(format!("user{}.testnet", i)).unwrap();
+            contract.add_authorized_user(user);
+        }
+
+        // Attempting to add an 11th user should panic
+        let user11 = AccountId::try_from("user11.testnet".to_string()).unwrap();
+        contract.add_authorized_user(user11);
+    }
+
+    #[test]
+    fn test_max_authorized_users_remove_and_add() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = TradingAccountContract::new(
+            accounts(1),
+            AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
+        );
+
+        // Add 10 authorized users (the maximum)
+        for i in 0..10 {
+            let user = AccountId::try_from(format!("user{}.testnet", i)).unwrap();
+            contract.add_authorized_user(user);
+        }
+
+        // Verify we have 10 users
+        assert_eq!(contract.get_authorized_users().len(), 10);
+
+        // Remove one user
+        let user0 = AccountId::try_from("user0.testnet".to_string()).unwrap();
+        contract.remove_authorized_user(user0);
+        assert_eq!(contract.get_authorized_users().len(), 9);
+
+        // Now we should be able to add another user
+        let user11 = AccountId::try_from("user11.testnet".to_string()).unwrap();
+        contract.add_authorized_user(user11.clone());
+        assert_eq!(contract.get_authorized_users().len(), 10);
+        assert!(contract.is_authorized(user11));
+    }
+
+    #[test]
     #[should_panic(expected = "Unauthorized: only authorized users can request signatures")]
     fn test_unauthorized_request_signature() {
         let context = get_context(accounts(2));
@@ -102,7 +153,7 @@ mod tests {
             accounts(1),
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
-        contract.request_signature(
+        let _ = contract.request_signature(
             accounts(3),                                        // contract_id: AccountId
             "[{\"public_key\": \"ed25519:1234\"}]".to_string(), // actions_json: String
             U64(1),                                             // nonce: U64
@@ -136,7 +187,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let _ = contract.request_signature(
             accounts(3),                       // contract_id
             actions_json.to_string(),          // actions_json
             U64(1),                            // nonce
@@ -170,7 +221,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let _ = contract.request_signature(
             AccountId::try_from("bad-account.near".to_string()).unwrap(),
             actions_json.to_string(),
             U64(1),
@@ -248,7 +299,7 @@ mod tests {
         ]"#;
 
         testing_env!(get_context(accounts(2)).build());
-        contract.request_signature(
+        let _ = contract.request_signature(
             AccountId::try_from("wrap.near".to_string()).unwrap(),
             actions_json.to_string(),
             U64(1),
@@ -261,23 +312,8 @@ mod tests {
 
     #[test]
     fn test_signature_response_serialization() {
-        // Test EDDSA signature response
-        let eddsa_response = SignatureResponse::Eddsa(EddsaSignatureResponse {
-            signature: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        });
-
-        let json = serde_json::to_string(&eddsa_response).unwrap();
-        let decoded: SignatureResponse = serde_json::from_str(&json).unwrap();
-
-        match decoded {
-            SignatureResponse::Eddsa(eddsa) => {
-                assert_eq!(eddsa.signature, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-            }
-            _ => panic!("Expected EDDSA signature response"),
-        }
-
         // Test ECDSA signature response
-        let ecdsa_response = SignatureResponse::Ecdsa(EcdsaSignatureResponse {
+        let ecdsa_response = EcdsaSignatureResponse {
             scheme: "Secp256k1".to_string(),
             big_r: BigR {
                 affine_point: "03D0E412BEEBF4B0191C08E13323466A96582C95A2B0BAF4CB6859968B86C01157"
@@ -288,18 +324,13 @@ mod tests {
                     .to_string(),
             },
             recovery_id: 1,
-        });
+        };
 
         let json = serde_json::to_string(&ecdsa_response).unwrap();
         let decoded: SignatureResponse = serde_json::from_str(&json).unwrap();
 
-        match decoded {
-            SignatureResponse::Ecdsa(ecdsa) => {
-                assert_eq!(ecdsa.scheme, "Secp256k1");
-                assert_eq!(ecdsa.recovery_id, 1);
-            }
-            _ => panic!("Expected ECDSA signature response"),
-        }
+        assert_eq!(decoded.scheme, "Secp256k1");
+        assert_eq!(decoded.recovery_id, 1);
     }
 
     #[test]
@@ -326,7 +357,7 @@ mod tests {
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
-        contract.add_full_access_key(pk);
+        let _ = contract.add_full_access_key(pk);
     }
 
     #[test]
@@ -354,7 +385,7 @@ mod tests {
             AccountId::try_from("v1.signer-prod.testnet".to_string()).unwrap(),
         );
         let pk = PublicKey::from_str("ed25519:11111111111111111111111111111111").unwrap();
-        contract.add_full_access_key_and_register_with_intents(pk);
+        let _ = contract.add_full_access_key_and_register_with_intents(pk);
     }
 
     #[test]

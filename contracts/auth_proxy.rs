@@ -14,7 +14,7 @@ use near_sdk::{
 
 use omni_transaction::TransactionBuilder;
 use omni_transaction::TxBuilder;
-use omni_transaction::near::types::{ED25519Signature, Secp256K1Signature};
+use omni_transaction::near::types::Secp256K1Signature;
 use omni_transaction::near::utils::PublicKeyStrExt;
 use omni_transaction::{
     NEAR,
@@ -43,6 +43,7 @@ const GAS_FOR_REQUEST_SIGNATURE: Gas = Gas::from_tgas(100);
 const BASE_GAS: Gas = Gas::from_tgas(10); // Base gas for contract execution
 const CALLBACK_GAS: Gas = Gas::from_tgas(10); // Gas reserved for callback
 const NEAR_MPC_DOMAIN_ID: u32 = 0;
+const MAX_AUTHORIZED_USERS: u64 = 10; // Maximum number of authorized users per trading account
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -90,6 +91,14 @@ impl TradingAccountContract {
     // Owner methods for managing authorized users
     pub fn add_authorized_user(&mut self, account_id: AccountId) {
         self.assert_owner();
+
+        // Check maximum limit before adding
+        assert!(
+            self.authorized_users.len() < MAX_AUTHORIZED_USERS,
+            "Maximum number of authorized users reached:({}). One must be removed before adding another.",
+            MAX_AUTHORIZED_USERS
+        );
+
         self.authorized_users.insert(&account_id);
     }
 
@@ -206,11 +215,11 @@ impl TradingAccountContract {
         let hashed_payload = utils::hash_payload(&tx.build_for_signing());
 
         let sign_request = SignRequest {
-            payload_v2: EddsaPayload {
+            payload_v2: EcdsaPayload {
                 ecdsa: hex::encode(hashed_payload),
             },
             path: derivation_path,
-            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID),
+            domain_id: domain_id.unwrap_or(NEAR_MPC_DOMAIN_ID), // domain_id != 0 requies a transaction payload for the target chain e.g. SOL
         };
 
         serde_json::json!({ "request": sign_request })
@@ -256,31 +265,38 @@ impl TradingAccountContract {
         );
 
         // Parse actions from JSON string
-        let actions: Vec<ActionString> = serde_json::from_str(&actions_json)
-            .unwrap_or_else(|e| panic!("Failed to parse actions JSON: {:?}", e));
+        let actions: Vec<ActionString> = serde_json::from_str(&actions_json).unwrap_or_else(|e| {
+            near_sdk::env::panic_str(&format!("Failed to parse actions JSON: {:?}", e))
+        });
 
         near_sdk::env::log_str(&format!(
             "Request received - Contract: {}, Actions: {:?}, Nonce: {}, Block Hash: {:?}",
             contract_id, actions, nonce.0, block_hash
         ));
 
+        // Validate MPC public key early
+        let mpc_public_key = match mpc_signer_pk.to_public_key() {
+            Ok(pk) => pk,
+            Err(e) => {
+                near_sdk::env::panic_str(&format!("Invalid MPC public key format: {}", e));
+            }
+        };
+
         // Validate and build OmniActions
         let omni_actions = match self.validate_and_build_actions(actions, &contract_id) {
             Ok(actions) => actions,
             Err(e) => {
-                env::panic_str(&e);
+                near_sdk::env::panic_str(&format!(
+                    "Failed to validate and build OmniActions: {:?}",
+                    e
+                ));
             }
         };
 
         // construct the entire transaction to be signed
         let tx = TransactionBuilder::new::<NEAR>()
             .signer_id(env::current_account_id().to_string())
-            .signer_public_key(match mpc_signer_pk.to_public_key() {
-                Ok(pk) => pk,
-                Err(e) => {
-                    env::panic_str(&format!("Invalid MPC public key format: {}", e));
-                }
-            })
+            .signer_public_key(mpc_public_key)
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
@@ -316,7 +332,7 @@ impl TradingAccountContract {
 
         // Serialize transaction into a string to pass into callback
         let mut tx_json_string = serde_json::to_string(&tx)
-            .unwrap_or_else(|e| panic!("Failed to serialize NearTransaction: {:?}", e));
+            .expect("Internal bug: transaction serialization should never fail");
 
         // Convert large deposit numbers to strings for JSON compatibility
         tx_json_string = self.convert_deposits_to_strings(tx_json_string, &deposits);
@@ -338,7 +354,7 @@ impl TradingAccountContract {
         let request_payload_bytes = match near_sdk::serde_json::to_vec(&request_payload) {
             Ok(bytes) => bytes,
             Err(e) => {
-                env::panic_str(&format!("Failed to serialize request payload: {}", e));
+                near_sdk::env::panic_str(&format!("Failed to serialize request payload: {}", e));
             }
         };
 
@@ -388,7 +404,8 @@ impl TradingAccountContract {
         self.add_full_access_key(public_key).then(
             Promise::new(NEAR_INTENTS_ADDRESS.clone()).function_call(
                 "add_public_key".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                near_sdk::serde_json::to_vec(&request_payload)
+                    .expect("Failed to serialize public key payload"),
                 env::attached_deposit(),
                 BASE_GAS,
             ),
@@ -403,67 +420,63 @@ impl TradingAccountContract {
     ) -> String {
         let response = match call_result {
             Ok(response) => {
-                near_sdk::env::log_str(&format!("Parsed JSON response: {:?}", response));
+                near_sdk::env::log_str(&format!(
+                    "Parsed the MPC's Signature response: {:?}",
+                    response
+                ));
                 response
             }
             Err(e) => {
-                near_sdk::env::log_str(&format!("Failed to parse JSON: {:?}", e));
-                panic!("Failed to parse response JSON");
+                near_sdk::env::panic_str(&format!(
+                    "Failed to parse the MPC's Signature response: {:?}",
+                    e
+                ));
             }
         };
 
-        // Deserialize transaction
+        // Deserialize transaction that we serialized in request_signature
         let near_tx = serde_json::from_str::<models::NearTransaction>(&tx_json_string)
-            .unwrap_or_else(|_| panic!("Failed to deserialize transaction: {:?}", tx_json_string));
+            .expect("Internal bug: failed to deserialize our own transaction JSON");
 
         let message_hash = utils::hash_payload(&near_tx.build_for_signing());
         near_sdk::env::log_str(&format!("Message hash: {}", hex::encode(message_hash)));
 
         // Handle different signature formats
-        let omni_signature = match response {
-            SignatureResponse::Eddsa(eddsa) => {
-                near_sdk::env::log_str("Using ED25519 signature format");
-                Signature::ED25519(ED25519Signature {
-                    r: eddsa.signature[0..32].try_into().unwrap(),
-                    s: eddsa.signature[32..64].try_into().unwrap(),
-                })
-            }
-            SignatureResponse::Ecdsa(ecdsa) => {
-                near_sdk::env::log_str("Using SECP256K1 signature format");
-                // Convert signature components
-                let r = hex::decode(&ecdsa.big_r.affine_point[2..]).expect("Invalid hex in r");
-                let s = hex::decode(&ecdsa.s.scalar).expect("Invalid hex in s");
-                let v = ecdsa.recovery_id;
+        let omni_signature = {
+            near_sdk::env::log_str("Using SECP256K1 signature format");
+            // Convert signature components
+            let r = hex::decode(&response.big_r.affine_point[2..]).expect("Invalid hex in r");
+            let s = hex::decode(&response.s.scalar).expect("Invalid hex in s");
+            let v = response.recovery_id;
 
-                // Combine r and s for verification
-                let mut signature = Vec::with_capacity(64);
-                signature.extend_from_slice(&r);
-                signature.extend_from_slice(&s);
+            // Combine r and s for verification
+            let mut signature = Vec::with_capacity(64);
+            signature.extend_from_slice(&r);
+            signature.extend_from_slice(&s);
 
-                // Verify signature
-                let recovered = self.test_recover(message_hash.to_vec(), signature, v);
-                match recovered {
-                    Some(public_key) => {
-                        near_sdk::env::log_str(&format!(
-                            "Signature verified! Recovered public key: {}",
-                            public_key
-                        ));
-                    }
-                    None => {
-                        near_sdk::env::log_str("Signature verification failed!");
-                        panic!("Invalid signature: ecrecover failed");
-                    }
+            // Verify signature
+            let recovered = self.test_recover(message_hash.to_vec(), signature, v);
+            match recovered {
+                Some(public_key) => {
+                    near_sdk::env::log_str(&format!(
+                        "Signature verified! Recovered public key: {}",
+                        public_key
+                    ));
                 }
-
-                // Add individual bytes together in the correct order
-                let mut signature_bytes = [0u8; 65];
-                signature_bytes[..32].copy_from_slice(&r);
-                signature_bytes[32..64].copy_from_slice(&s);
-                signature_bytes[64] = v;
-
-                // Create signature
-                Signature::SECP256K1(Secp256K1Signature(signature_bytes))
+                None => {
+                    near_sdk::env::log_str("Signature verification failed!");
+                    near_sdk::env::panic_str("Invalid signature: ecrecover failed");
+                }
             }
+
+            // Add individual bytes together in the correct order
+            let mut signature_bytes = [0u8; 65];
+            signature_bytes[..32].copy_from_slice(&r);
+            signature_bytes[32..64].copy_from_slice(&s);
+            signature_bytes[64] = v;
+
+            // Create signature
+            Signature::SECP256K1(Secp256K1Signature(signature_bytes))
         };
 
         near_sdk::env::log_str(&format!(

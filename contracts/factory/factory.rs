@@ -1,7 +1,7 @@
 use bs58;
 use near_sdk::serde::Serialize;
 use near_sdk::{
-    env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey, env, near,
 };
 
 const TESTNET_SIGNER: &str = "v1.signer-prod.testnet";
@@ -126,7 +126,9 @@ impl TradingAccountFactory {
             // Even with millions of implicit accounts, collision risk is negligible
             format!("implicit_{}", truncated)
         } else {
-            env::panic_str("Unsupported account name format for base account name extraction");
+            near_sdk::env::panic_str(
+                "Unsupported account name format for base account name extraction",
+            );
         }
     }
 
@@ -138,9 +140,9 @@ impl TradingAccountFactory {
 
     /// Helper function to decode Base58 code hash string to 32-byte hash
     fn decode_code_hash(code_hash_str: &str) -> Vec<u8> {
-        let decoded_hash = bs58::decode(code_hash_str)
-            .into_vec()
-            .unwrap_or_else(|e| panic!("Failed to decode Base58 code hash: {}", e));
+        let decoded_hash = bs58::decode(code_hash_str).into_vec().unwrap_or_else(|e| {
+            near_sdk::env::panic_str(&format!("Failed to decode Base58 code hash: {}", e))
+        });
 
         // Verify it's exactly 32 bytes (SHA-256 hash)
         assert_eq!(decoded_hash.len(), 32, "Code hash must be exactly 32 bytes");
