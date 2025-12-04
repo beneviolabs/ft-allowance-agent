@@ -404,7 +404,8 @@ impl TradingAccountContract {
         self.add_full_access_key(public_key).then(
             Promise::new(NEAR_INTENTS_ADDRESS.clone()).function_call(
                 "add_public_key".to_string(),
-                near_sdk::serde_json::to_vec(&request_payload).unwrap(),
+                near_sdk::serde_json::to_vec(&request_payload)
+                    .expect("Failed to serialize public key payload"),
                 env::attached_deposit(),
                 BASE_GAS,
             ),
